@@ -4,7 +4,7 @@
 
 ## Status
 
-0.1.0 is in progress, following the plan in the cajeta repo (`agents/cajeta-crypto-plan.md`, spec `specs/cajeta-crypto-spec.md`).
+0.1.0 is complete on `main` and waits on its release tag; [CHANGELOG.md](CHANGELOG.md) lists what it holds. The work follows the plan in the cajeta repo (`agents/cajeta-crypto-plan.md`, spec `specs/cajeta-crypto-spec.md`).
 
 | Package | Contents | State |
 |---|---|---|
@@ -39,7 +39,9 @@ The `.cja` carries the shim's static archive for linux-x64, linux-arm64, macos-a
 ./scripts/ci-checks.sh    # the self-checking tour and the tour-coverage gate
 ```
 
-`CAJETA=<path>` picks the compiler. The tests need OpenSSL 3 headers (`libssl-dev`, or `openssl@3` on macOS), and a `../cajeta-unit` checkout or network access to Olla for `dev.cajeta.unit`.
+`CAJETA=<path>` picks the compiler. Both scripts also run under MSYS2 MINGW64 on Windows with `CC=gcc`.
+
+A library build bakes the shim from `CAJETA_NATIVE_PATH`, so a local `cajeta install` runs `./native/build.sh` first and sets `CAJETA_NATIVE_PATH=$PWD/native`. The build cache does not key on the native archives yet, so clear `.cajeta/cache` after rebuilding the shim. The tests need OpenSSL 3 headers (`libssl-dev`, or `openssl@3` on macOS), and a `../cajeta-unit` checkout or network access to Olla for `dev.cajeta.unit`.
 
 ## License
 

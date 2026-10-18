@@ -26,8 +26,10 @@
         // `cajeta_crypto` is the static shim in native/ (built by
         // native/build.sh). The .cja packaging step bakes each platform's
         // libcajeta_crypto.a into the archive's native/<platform>/ tree, so a
-        // consumer links offline with no CAJETA_NATIVE_PATH. DCE-gated: a
-        // build that calls nothing from this library links none of it.
+        // consumer links offline with no CAJETA_NATIVE_PATH. Not DCE-gated:
+        // the compiler roots every classpath class through its reflection
+        // tables, so a program with this library on its classpath links the
+        // shim even if it calls nothing from it (spec 2.4).
         "native-libraries": {
             "cajeta_crypto": {
                 "version":         "0.1.0",
