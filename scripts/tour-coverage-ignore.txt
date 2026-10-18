@@ -1,0 +1,3 @@
+# Types exempt from the tour-coverage gate (scripts/check-library-tour-coverage.sh).
+# Each entry must justify itself: only genuine internals belong here. A public
+# type a user would reach for must be toured instead.

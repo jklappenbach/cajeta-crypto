@@ -1,0 +1,13 @@
+package dcecheck;
+
+/**
+ * cajeta-crypto plan 1.1.2: a program that never calls the library, built with
+ * it on the classpath. run-tests.sh records that its executable still links the
+ * shim, through reflection rooting (spec 2.4).
+ */
+public final class Main {
+    public static int32 run() {
+        System.stdout.println("dce check");
+        return 0;
+    }
+}

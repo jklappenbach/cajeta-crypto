@@ -1,0 +1,43 @@
+package cryptotour;
+
+import dev.cajeta.crypto.Crypto;
+import dev.cajeta.crypto.SecureRandom;
+
+/**
+ * The dev.cajeta.crypto tour: each demo checks its own output, so a nonzero
+ * exit means a demonstrated contract regressed.
+ */
+public final class CryptoTour {
+    static int32 failures = 0;
+
+    static void check(boolean ok, String what) {
+        if (ok) {
+            System.stdout.println("  ok   " + what);
+        } else {
+            System.stdout.println("  FAIL " + what);
+            CryptoTour.failures = CryptoTour.failures + 1;
+        }
+    }
+
+    /** Secure random bytes: a salt, then a buffer filled in place. */
+    static void secureRandom() {
+        System.stdout.println("SecureRandom");
+        int8[] salt #= SecureRandom.bytes(16L);
+        CryptoTour.check(salt.count() == 16L, "bytes(16) returns 16 bytes");
+        int8[] buf = heap int8[32];
+        SecureRandom.fill(buf, 32L);
+        int32 zeros = 0;
+        int32 i = 0;
+        while (i < 32) {
+            if (buf[i] == (int8) 0) { zeros = zeros + 1; }
+            i = i + 1;
+        }
+        CryptoTour.check(zeros < 32, "fill(buf, 32) overwrites the buffer");
+    }
+
+    public static int32 main() {
+        System.stdout.println("dev.cajeta.crypto " + Crypto.version());
+        CryptoTour.secureRandom();
+        return CryptoTour.failures == 0 ? 0 : 1;
+    }
+}

@@ -1,0 +1,67 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.error.UnrecoverableException;
+import dev.cajeta.crypto.Crypto;
+import dev.cajeta.crypto.SecureRandom;
+import dev.cajeta.unit.Assert;
+
+/**
+ * cajeta-crypto plan 1.1.1: the native shim is reachable. SecureRandom draws
+ * through OpenSSL's RAND_bytes in libcajeta_crypto.a, so a passing draw proves
+ * the archive linked and its OpenSSL calls resolved.
+ */
+public class SecureRandomTest {
+
+    public SecureRandomTest() { return; }
+
+    @Test
+    public void twoDrawsDiffer() {
+        int8[] a #= SecureRandom.bytes(32L);
+        int8[] b #= SecureRandom.bytes(32L);
+        Assert.isTrue(a.count() == 32L);
+        Assert.isTrue(b.count() == 32L);
+        int32 same = 0;
+        int32 i = 0;
+        while (i < 32) {
+            if (a[i] == b[i]) { same = same + 1; }
+            i = i + 1;
+        }
+        Assert.isTrue(same < 32);
+    }
+
+    @Test
+    public void fillWritesOnlyThePrefix() {
+        int8[] buf = heap int8[64];
+        SecureRandom.fill(buf, 16L);
+        int32 i = 16;
+        boolean tailZero = true;
+        while (i < 64) {
+            if (buf[i] != (int8) 0) { tailZero = false; }
+            i = i + 1;
+        }
+        Assert.isTrue(tailZero);
+    }
+
+    @Test
+    public void zeroLengthDrawIsEmpty() {
+        int8[] z #= SecureRandom.bytes(0L);
+        Assert.isTrue(z.count() == 0L);
+    }
+
+    @Test
+    public void fillPastTheBufferThrows() {
+        int8[] buf = heap int8[4];
+        boolean threw = false;
+        try {
+            SecureRandom.fill(buf, 5L);
+        } catch (UnrecoverableException e) {
+            threw = true;
+        }
+        Assert.isTrue(threw);
+    }
+
+    @Test
+    public void versionMatchesTheManifest() {
+        Assert.isTrue(Crypto.version().equals("0.1.0"));
+    }
+}

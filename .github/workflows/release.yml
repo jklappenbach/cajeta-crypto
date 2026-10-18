@@ -1,0 +1,150 @@
+# CI and release for dev.cajeta.crypto.
+#
+# The shared lib-release.yml cannot build native code, so this follows
+# cajeta-codec: one job per platform builds native/<platform>/libcajeta_crypto.a
+# against that platform's OpenSSL 3 headers, then a Linux job assembles the
+# native/ tree, runs the suite, the tour and the tour-coverage gate, and bakes
+# every archive into the .cja. A v* tag also publishes a GitHub Release and
+# publishes to Olla through trusted publishing (GitHub OIDC, no token).
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CAJETA_VERSION: v0.43.1
+
+jobs:
+  native:
+    name: native archive (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64,   os: ubuntu-latest }
+          - { platform: linux-arm64, os: ubuntu-24.04-arm }
+          - { platform: macos-arm64, os: macos-14 }
+          - { platform: windows-x64, os: windows-latest }
+    defaults:
+      run:
+        shell: ${{ matrix.platform == 'windows-x64' && 'msys2 {0}' || 'bash' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: OpenSSL headers (Linux)
+        if: startsWith(matrix.platform, 'linux')
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+      - name: MSYS2 mingw64 with OpenSSL (Windows)
+        if: matrix.platform == 'windows-x64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-openssl
+      - name: Build the shim
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.platform }}" = macos-arm64 ]; then
+            export CFLAGS="-I$(brew --prefix openssl@3)/include"
+          fi
+          if [ "${{ matrix.platform }}" = windows-x64 ]; then
+            export CC=gcc
+          fi
+          ./native/build.sh
+          test -f "native/${{ matrix.platform }}/libcajeta_crypto.a"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: native/${{ matrix.platform }}/libcajeta_crypto.a
+          if-no-files-found: error
+
+  build-test:
+    name: build + test (x86_64-linux)
+    runs-on: ubuntu-latest
+    needs: [native]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the native archives
+        uses: actions/download-artifact@v4
+        with:
+          path: _native_dl
+      - name: Assemble the native/ tree for baking
+        run: |
+          set -euo pipefail
+          for p in linux-x64 linux-arm64 macos-arm64 windows-x64; do
+            a="_native_dl/native-$p/libcajeta_crypto.a"
+            [ -f "$a" ] || { echo "::error::no native archive for $p"; exit 1; }
+            mkdir -p "native/$p"; cp "$a" "native/$p/"; echo "placed $p"
+          done
+      - name: OpenSSL headers
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+      - name: Checkout cajeta-unit (test framework)
+        uses: actions/checkout@v4
+        with:
+          repository: jklappenbach/cajeta-unit
+          ref: v0.3.6
+          path: cajeta-unit-dep
+      - name: Install cajeta toolchain (${{ env.CAJETA_VERSION }})
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$CAJETA_VERSION" --repo jklappenbach/cajeta \
+            --pattern 'cajeta_*_amd64.deb' --dir /tmp
+          sudo apt-get install -y /tmp/cajeta_*_amd64.deb
+          cajeta --version
+      - name: Run the suite
+        timeout-minutes: 30
+        env:
+          UNIT_REPO: ${{ github.workspace }}/cajeta-unit-dep
+        run: ./run-tests.sh
+      - name: Tour and tour-coverage gate
+        run: CAJETA="$(command -v cajeta)" ./scripts/ci-checks.sh
+      - name: Build the release .cja (bakes all four platforms)
+        id: build
+        env:
+          CAJETA_NATIVE_PATH: ${{ github.workspace }}/native
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' cajeta.json | head -1)"
+          out="$(mktemp -d)"
+          cajeta --emit=cja -o "$out/dev.cajeta.crypto-${VERSION}.cja" \
+            dev.cajeta.crypto.Crypto.run src/main/cajeta "$out/lib"
+          mkdir -p dist
+          cp "$out/dev.cajeta.crypto-${VERSION}.cja" dist/
+          echo "artifact=dist/dev.cajeta.crypto-${VERSION}.cja" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Verify every platform is baked
+        run: |
+          set -euo pipefail
+          list="$(cajeta archive list "${{ steps.build.outputs.artifact }}")"
+          for p in linux-x64 linux-arm64 macos-arm64 windows-x64; do
+            grep -q "native/$p/libcajeta_crypto.a" <<< "$list" \
+              || { echo "::error::native/$p not baked into the .cja"; exit 1; }
+            echo "baked $p"
+          done
+      - name: Upload the .cja
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev.cajeta.crypto-${{ steps.build.outputs.version }}
+          path: ${{ steps.build.outputs.artifact }}
+      - name: Publish the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: cajeta-crypto ${{ steps.build.outputs.version }}
+          generate_release_notes: true
+          files: ${{ steps.build.outputs.artifact }}
+      - name: Publish to Olla
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: jklappenbach/cajeta/.github/actions/olla-publish@ci/v1
+        with:
+          cja-path: ${{ steps.build.outputs.artifact }}
+          version: ${{ steps.build.outputs.version }}

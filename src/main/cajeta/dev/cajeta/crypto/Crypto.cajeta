@@ -1,0 +1,17 @@
+package dev.cajeta.crypto;
+
+/**
+ * dev.cajeta.crypto: cryptography outside the stdlib, on OpenSSL 3 through
+ * `@Native`. The library's types live beside this one; this class carries the
+ * version and the archive's entry point.
+ */
+public final class Crypto {
+
+    /** The library version, which run-tests.sh holds equal to cajeta.json's. */
+    public static String version() { return "0.1.0"; }
+
+    /** The archive entry point `cajeta --emit=cja` builds against. */
+    public static int32 run() {
+        return 0;
+    }
+}

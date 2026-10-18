@@ -1,0 +1,92 @@
+{
+    // dev.cajeta.crypto — cryptography outside the stdlib, so it ships on its
+    // own clock (spec: cajeta specs/cajeta-crypto-spec.md). The algorithms are
+    // OpenSSL 3's, reached through `@Native` over the cajeta_crypto shim in
+    // native/; nothing here vendors OpenSSL, and the compiler already puts
+    // -lssl -lcrypto on every link line.
+
+    "details": {
+        "name":               "dev.cajeta.crypto",
+        "version":            "0.1.0",
+        "description":        "cajeta-crypto — hashes, MACs, KDFs, TOTP, secure random, JWS signatures (RS256, ES256) and TLS over OpenSSL",
+        "license":            "Apache-2.0",
+        "authors":            ["Julian Klappenbach"],
+        "cajeta-lang-version": "1.0"
+    },
+
+    "settings": {
+        "toolchain": {
+            "version": "0.43.1"
+        },
+
+        "capabilities": [],
+
+        "dependencies": {},
+
+        // `cajeta_crypto` is the static shim in native/ (built by
+        // native/build.sh). The .cja packaging step bakes each platform's
+        // libcajeta_crypto.a into the archive's native/<platform>/ tree, so a
+        // consumer links offline with no CAJETA_NATIVE_PATH. DCE-gated: a
+        // build that calls nothing from this library links none of it.
+        "native-libraries": {
+            "cajeta_crypto": {
+                "version":         "0.1.0",
+                "license":         "Apache-2.0",
+                "redistributable": true,
+                "link":            "static",
+                "platforms": [
+                    "linux-x64", "linux-arm64", "windows-x64", "macos-arm64"
+                ]
+            }
+        },
+
+        "dev-dependencies": {
+            "dev.cajeta.unit": "0.3.6"
+        },
+
+        "repositories": [
+            { "name": "central", "url": "https://olla.cajeta.dev",
+              "priority": 0 }
+        ],
+
+        "build": {
+            "source-root": "src/main/cajeta",
+            "target": "host"
+        }
+    },
+
+    "tasks": {
+        "build": {
+            "description": "Compile sources to a .cja library archive",
+            "actions": [
+                { "action": "build", "flavor": "debug", "id": "art" }
+            ],
+            "outputs": { "path": "${art.path}", "sha256": "${art.sha256}" }
+        },
+        "test": {
+            "description": "Build the native shim, the library and the test binary, and run the suite",
+            "actions": [
+                { "action": "exec", "command": "./run-tests.sh" }
+            ]
+        },
+        "tour": {
+            "description": "Build and run the self-checking tour",
+            "actions": [
+                { "action": "exec", "command": "./samples/tour/run-tour.sh" }
+            ]
+        },
+        "release": {
+            "description": "Release build of the .cja",
+            "actions": [
+                { "action": "build", "flavor": "release", "id": "art" }
+            ],
+            "outputs": { "path": "${art.path}", "sha256": "${art.sha256}" }
+        },
+        "clean": {
+            "description": "Remove build outputs",
+            "actions": [
+                { "action": "exec", "command": "rm", "args": ["-rf", "build"] }
+            ]
+        }
+    }
+}
