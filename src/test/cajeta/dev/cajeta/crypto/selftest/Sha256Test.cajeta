@@ -103,4 +103,18 @@ public class Sha256Test {
         int8[] reference #= Sha256.hash(second, 1L);
         Assert.isTrue(Bytes.same(secondDigest, reference, 32));
     }
+
+    // Moved from cajeta's ViewSafeConsumerTests with Sha256: the String
+    // overloads hash a substring window, not the root it was cut from.
+    @Test
+    public void stringOverloadsSeeTheWindow() {
+        String a = "abcdefghijklmnopqrstuvwxyz";
+        String b = "0123456789";
+        String s = a + b;
+        String v #= s.substring(10, 16);
+        Assert.isTrue(v.equals("klmnop"));
+        String hv #= Sha256.hashStringHex(v);
+        String hk #= Sha256.hashStringHex("klmnop");
+        Assert.isTrue(hv.equals(hk));
+    }
 }
