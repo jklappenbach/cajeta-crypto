@@ -15,6 +15,16 @@ OLLA_URL="${OLLA_URL:-https://olla.cajeta.dev}"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 
+# Under MSYS2 or Git Bash on Windows a comma-separated --classpath reaches the
+# compiler unconverted, so each entry is converted to a Windows path first.
+winpath() {
+    if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
+# The compiler writes Windows executables with a .exe suffix.
+exe=""
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exe=".exe" ;; esac
+
 sha256_of() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1;
     else shasum -a 256 "$1" | cut -d' ' -f1; fi
@@ -66,7 +76,7 @@ echo ">> building the crypto library .cja"
 
 echo ">> building + running the test binary"
 "$CAJETA" --emit=exe --profile=test \
-    --classpath="$out/crypto.cja,$unit_cja" \
+    --classpath="$(winpath "$out/crypto.cja"),$(winpath "$unit_cja")" \
     -o "$out/cryptotests" \
     dev.cajeta.crypto.selftest.TestMain.run "$here/src/test/cajeta" "$out/test" >/dev/null
 "$out/cryptotests"
@@ -74,7 +84,7 @@ echo ">> building + running the test binary"
 echo ">> native shim linkage (spec 2.4)"
 # nm's output is captured first: under pipefail, `nm | grep -q` fails when
 # grep exits on its match and nm dies of SIGPIPE.
-test_syms="$(nm "$out/cryptotests")"
+test_syms="$(nm "$out/cryptotests$exe")"
 grep -q ' T __cajeta_crypto_random_fill' <<< "$test_syms" \
     || { echo "FAIL: the test binary does not contain __cajeta_crypto_random_fill" >&2; exit 1; }
 # Measured 2026-10-17: every classpath class gets a registration constructor and
@@ -84,7 +94,7 @@ grep -q ' T __cajeta_crypto_random_fill' <<< "$test_syms" \
 # to "links none of it" and flip the check back.
 "$CAJETA" --emit=exe --classpath="$out/crypto.cja" -o "$out/dcecheck" \
     dcecheck.Main.run "$here/test-dce/src" "$out/dce" >/dev/null
-dce_syms="$(nm "$out/dcecheck")"
+dce_syms="$(nm "$out/dcecheck$exe")"
 grep -q ' T __cajeta_crypto_random_fill' <<< "$dce_syms" \
     || { echo "CHANGED: a program that never calls the library no longer links the shim; update spec 2.4 and this check" >&2; exit 1; }
 echo "  ok   the shim links into the test binary, and (spec 2.4, reflection rooting) into a program that never calls it"
