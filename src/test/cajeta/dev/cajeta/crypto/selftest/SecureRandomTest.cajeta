@@ -12,7 +12,47 @@ import dev.cajeta.unit.Assert;
  */
 public class SecureRandomTest {
 
+    @Native(symbol = "__cajeta_crypto_random_test_fail", lib = "cajeta_crypto")
+    static int32 forceFail(int32 on);
+
     public SecureRandomTest() { return; }
+
+    // Ported from cajeta CryptoPrimitivesTests: two draws differ, and neither is all zero.
+    @Test
+    public void drawsDifferAndHonorLength() {
+        int8[] a #= SecureRandom.bytes(32L);
+        int8[] b #= SecureRandom.bytes(32L);
+        Assert.isTrue(!Bytes.same(a, b, 32));
+        int8[] zero = heap int8[32];
+        Assert.isTrue(!Bytes.same(a, zero, 32));
+    }
+
+    // Ported from cajeta CryptoPrimitivesTests: a zero-length fill touches nothing.
+    @Test
+    public void zeroLengthIsANoOp() {
+        int8[] z #= SecureRandom.bytes(0L);
+        int8[] buf = heap int8[4];
+        buf[0] = (int8) 7; buf[1] = (int8) 7; buf[2] = (int8) 7; buf[3] = (int8) 7;
+        SecureRandom.fill(buf, 0L);
+        Assert.isTrue(buf[0] == (int8) 7 && buf[3] == (int8) 7);
+        Assert.isTrue(z.count() == 0L);
+    }
+
+    // Plan 2.1.3: when the entropy source fails, the call raises instead of
+    // returning short or predictable bytes.
+    @Test
+    public void entropyFailureRaises() {
+        int8[] buf = heap int8[16];
+        SecureRandomTest.forceFail(1);
+        boolean threw = false;
+        try {
+            SecureRandom.fill(buf, 16L);
+        } catch (UnrecoverableException e) {
+            threw = true;
+        }
+        SecureRandomTest.forceFail(0);
+        Assert.isTrue(threw);
+    }
 
     @Test
     public void twoDrawsDiffer() {

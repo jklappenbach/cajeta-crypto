@@ -1,0 +1,56 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.Sha1;
+import dev.cajeta.unit.Assert;
+
+/** Ported from cajeta test/parser/Sha1Tests.cpp (cajeta-crypto plan 2.1.1), case for case. */
+public class Sha1Test {
+
+    public Sha1Test() { return; }
+
+    static boolean oneShot(String input, String hexDigest) {
+        int8[] data #= Bytes.ascii(input);
+        int8[] d #= Sha1.hash(data, (int64) input.byteLength());
+        return Bytes.equalsHex(d, 20, hexDigest);
+    }
+
+    @Test
+    public void fipsVectors() {
+        Assert.isTrue(Sha1Test.oneShot("", "da39a3ee5e6b4b0d3255bfef95601890afd80709"));
+        Assert.isTrue(Sha1Test.oneShot("abc", "a9993e364706816aba3e25717850c26c9cd0d89d"));
+        Assert.isTrue(Sha1Test.oneShot("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+            "84983e441c3bd26ebaae4aa1f95129e5e54670f1"));
+    }
+
+    @Test
+    public void rfc6455HandshakeDigest() {
+        Assert.isTrue(Sha1Test.oneShot("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+            "b37a4f2cc0624f1690f64606cf385945b2bec4ea"));
+    }
+
+    @Test
+    public void streamingMatchesOneShot() {
+        int8[] p1 #= Bytes.ascii("abc");
+        int8[] p2 #= Bytes.ascii("def");
+        int8[] full #= Bytes.ascii("abcdef");
+        Sha1 h = heap Sha1();
+        h.update(p1, 3L);
+        h.update(p2, 3L);
+        int8[] streamed #= h.digest();
+        int8[] oneshot #= Sha1.hash(full, 6L);
+        Assert.isTrue(Bytes.same(streamed, oneshot, 20));
+    }
+
+    @Test
+    public void resetReusesInstance() {
+        int8[] abc #= Bytes.ascii("abc");
+        Sha1 h = heap Sha1();
+        h.update(abc, 3L);
+        int8[] first #= h.digest();
+        h.reset();
+        h.update(abc, 3L);
+        int8[] second #= h.digest();
+        Assert.isTrue(Bytes.same(first, second, 20));
+    }
+}

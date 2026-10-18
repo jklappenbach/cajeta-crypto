@@ -1,0 +1,142 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.HmacSha1;
+import dev.cajeta.crypto.Totp;
+import dev.cajeta.unit.Assert;
+
+/**
+ * Ported from cajeta test/parser/OtpPrimitivesTests.cpp (cajeta-crypto plan
+ * 2.1.1), case for case: HMAC-SHA1 (RFC 2202), HOTP (RFC 4226 appendix D),
+ * TOTP-SHA1 (RFC 6238 appendix B). Its Base32 cases stay in the compiler with
+ * the stdlib's Base32.
+ */
+public class OtpTest {
+
+    public OtpTest() { return; }
+
+    /** One RFC 2202 case: the MAC one-shot, or streamed in two halves. */
+    static boolean hmac(int8[] key, int32 keyLen, int8[] data, int32 dataLen, String want, boolean streaming) {
+        if (!streaming) {
+            int8[] m #= HmacSha1.mac(key, (int64) keyLen, data, (int64) dataLen);
+            return Bytes.equalsHex(m, 20, want);
+        }
+        int32 half = dataLen / 2;
+        HmacSha1 h = heap HmacSha1(key, (int64) keyLen);
+        h.update(data, (int64) half);
+        int8[] rest = heap int8[dataLen - half + 1];
+        int32 j = 0;
+        while (half + j < dataLen) { rest[j] = data[half + j]; j = j + 1; }
+        h.update(rest, (int64) j);
+        int8[] m #= h.digest();
+        return Bytes.equalsHex(m, 20, want);
+    }
+
+    static boolean asciiCase(String key, String data, String want, boolean streaming) {
+        int8[] k #= Bytes.ascii(key);
+        int8[] d #= Bytes.ascii(data);
+        return OtpTest.hmac(k, key.byteLength(), d, data.byteLength(), want, streaming);
+    }
+
+    static boolean rfc2202(boolean s) {
+        boolean ok = true;
+        int8[] k1 #= Bytes.repeated((int8) 0x0b, 20);
+        int8[] d1 #= Bytes.ascii("Hi There");
+        ok = ok && OtpTest.hmac(k1, 20, d1, 8, "b617318655057264e28bc0b6fb378c8ef146be00", s);
+        ok = ok && OtpTest.asciiCase("Jefe", "what do ya want for nothing?",
+            "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79", s);
+        int8[] k3 #= Bytes.repeated((int8) 0xaa, 20);
+        int8[] d3 #= Bytes.repeated((int8) 0xdd, 50);
+        ok = ok && OtpTest.hmac(k3, 20, d3, 50, "125d7342b9ac11cd91a39af48aa17b4f63f175d3", s);
+        int8[] k4 = heap int8[25];
+        int32 i = 0;
+        while (i < 25) { k4[i] = (int8) (i + 1); i = i + 1; }
+        int8[] d4 #= Bytes.repeated((int8) 0xcd, 50);
+        ok = ok && OtpTest.hmac(k4, 25, d4, 50, "4c9007f4026250c6bc8414f9bf50c86c2d7235da", s);
+        int8[] k5 #= Bytes.repeated((int8) 0x0c, 20);
+        int8[] d5 #= Bytes.ascii("Test With Truncation");
+        ok = ok && OtpTest.hmac(k5, 20, d5, 20, "4c1a03424b55e07fe7f27be1d58bb9324a9a5a04", s);
+        int8[] k6 #= Bytes.repeated((int8) 0xaa, 80);
+        String t6 = "Test Using Larger Than Block-Size Key - Hash Key First";
+        int8[] d6 #= Bytes.ascii(t6);
+        ok = ok && OtpTest.hmac(k6, 80, d6, t6.byteLength(), "aa4ae5e15272d00e95705637ce8a3b55ed402112", s);
+        String t7 = "Test Using Larger Than Block-Size Key and Larger Than One Block-Size Data";
+        int8[] d7 #= Bytes.ascii(t7);
+        ok = ok && OtpTest.hmac(k6, 80, d7, t7.byteLength(), "e8e99d0f45237d786d6bbaa7965c7808bbff1a91", s);
+        return ok;
+    }
+
+    static #String hotps(int64[] counters, int32 n, int32 digits) {
+        int8[] secret #= Bytes.ascii("12345678901234567890");
+        String acc = "";
+        int32 i = 0;
+        while (i < n) {
+            String c #= Totp.format(Totp.hotp(secret, 20L, counters[i], digits), digits);
+            acc = acc + c;
+            i = i + 1;
+        }
+        return #acc;
+    }
+
+    static #String totps(int64[] times, int32 n, int32 digits) {
+        int8[] secret #= Bytes.ascii("12345678901234567890");
+        String acc = "";
+        int32 i = 0;
+        while (i < n) {
+            String c #= Totp.format(Totp.code(secret, 20L, times[i], 30, digits), digits);
+            acc = acc + c;
+            i = i + 1;
+        }
+        return #acc;
+    }
+
+    @Test
+    public void rfc2202VectorsOneShot() {
+        Assert.isTrue(OtpTest.rfc2202(false));
+    }
+
+    @Test
+    public void rfc2202VectorsStreaming() {
+        Assert.isTrue(OtpTest.rfc2202(true));
+    }
+
+    @Test
+    public void rfc4226AppendixDCounters0To9() {
+        int64[] c = heap int64[10];
+        int32 i = 0;
+        while (i < 10) { c[i] = (int64) i; i = i + 1; }
+        String got #= OtpTest.hotps(c, 10, 6);
+        Assert.isTrue(got.equals("755224287082359152969429338314254676287922162583399871520489"));
+    }
+
+    @Test
+    public void rfc6238AppendixBSha1() {
+        int64[] t = heap int64[6];
+        t[0] = 59L; t[1] = 1111111109L; t[2] = 1111111111L;
+        t[3] = 1234567890L; t[4] = 2000000000L; t[5] = 20000000000L;
+        String got #= OtpTest.totps(t, 6, 8);
+        Assert.isTrue(got.equals("942870820708180414050471890059246927903765353130"));
+    }
+
+    @Test
+    public void sixDigitsIsTheAuthenticatorDefaultAndZeroPads() {
+        int64[] c = heap int64[1];
+        c[0] = 3L;
+        String eight #= OtpTest.hotps(c, 1, 8);
+        String six #= OtpTest.hotps(c, 1, 6);
+        Assert.isTrue(eight.equals("26969429"));
+        Assert.isTrue(six.equals("969429"));
+        int64[] t = heap int64[1];
+        t[0] = 1111111109L;
+        String padded #= OtpTest.totps(t, 1, 8);
+        Assert.isTrue(padded.equals("07081804"));
+    }
+
+    @Test
+    public void otpauthUriCarriesTheBase32SecretAndEscapes() {
+        int8[] secret #= Bytes.ascii("12345678901234567890");
+        String u #= Totp.uri("Ex Co", "ada@example.test", secret, 20L);
+        Assert.isTrue(u.equals("otpauth://totp/Ex%20Co:ada%40example.test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+            + "&issuer=Ex%20Co&algorithm=SHA1&digits=6&period=30"));
+    }
+}

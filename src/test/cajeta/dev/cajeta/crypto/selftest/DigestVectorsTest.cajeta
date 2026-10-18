@@ -1,0 +1,68 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.Blake3;
+import dev.cajeta.crypto.MD5;
+import dev.cajeta.unit.Assert;
+
+/**
+ * cajeta-crypto plan 2.1.2: MD5 against RFC 1321's test suite (also checked
+ * with md5sum) and BLAKE3 against its reference vectors (also checked with a
+ * from-the-spec Python compression function). Neither had a compiler test.
+ */
+public class DigestVectorsTest {
+
+    public DigestVectorsTest() { return; }
+
+    static boolean md5(String input, String want) {
+        int8[] d #= Bytes.ascii(input);
+        String got #= MD5.hashHex(d, (int64) input.byteLength());
+        return got.equals(want);
+    }
+
+    static boolean blake3(String input, String want) {
+        int8[] d #= Bytes.ascii(input);
+        String got #= Blake3.hashHex(d, (int64) input.byteLength());
+        return got.equals(want);
+    }
+
+    @Test
+    public void md5Rfc1321Suite() {
+        Assert.isTrue(DigestVectorsTest.md5("", "d41d8cd98f00b204e9800998ecf8427e"));
+        Assert.isTrue(DigestVectorsTest.md5("a", "0cc175b9c0f1b6a831c399e269772661"));
+        Assert.isTrue(DigestVectorsTest.md5("abc", "900150983cd24fb0d6963f7d28e17f72"));
+        Assert.isTrue(DigestVectorsTest.md5("message digest", "f96b697d7cb7938d525a2f31aaf161d0"));
+        Assert.isTrue(DigestVectorsTest.md5("abcdefghijklmnopqrstuvwxyz", "c3fcd3d76192e4007dfb496cca67e13b"));
+    }
+
+    @Test
+    public void md5StreamingMatchesOneShot() {
+        int8[] p1 #= Bytes.ascii("message ");
+        int8[] p2 #= Bytes.ascii("digest");
+        MD5 h = heap MD5();
+        h.update(p1, 8L);
+        h.update(p2, 6L);
+        int8[] d #= h.digest();
+        Assert.isTrue(Bytes.equalsHex(d, 16, "f96b697d7cb7938d525a2f31aaf161d0"));
+    }
+
+    @Test
+    public void blake3ReferenceVectors() {
+        Assert.isTrue(DigestVectorsTest.blake3("", "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"));
+        Assert.isTrue(DigestVectorsTest.blake3("abc", "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"));
+    }
+
+    @Test
+    public void blake3StreamingMatchesOneShot() {
+        int8[] big #= Bytes.repeated((int8) 0x61, 5000);
+        int8[] one #= Blake3.hash(big, 5000L);
+        Blake3 h = heap Blake3();
+        h.update(big, 1000L);
+        int8[] rest = heap int8[4000];
+        int32 i = 0;
+        while (i < 4000) { rest[i] = big[1000 + i]; i = i + 1; }
+        h.update(rest, 4000L);
+        int8[] streamed #= h.digest();
+        Assert.isTrue(Bytes.same(one, streamed, 32));
+    }
+}

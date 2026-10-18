@@ -1,0 +1,106 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.Sha256;
+import dev.cajeta.unit.Assert;
+
+/** Ported from cajeta test/parser/Sha256Tests.cpp (cajeta-crypto plan 2.1.1), case for case. */
+public class Sha256Test {
+
+    static String EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    static String ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    static String TWO_BLOCK = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    static String TWO_BLOCK_HEX = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
+
+    public Sha256Test() { return; }
+
+    static boolean oneShotHex(String input, String want) {
+        int8[] data #= Bytes.ascii(input);
+        String got #= Sha256.hashHex(data, (int64) input.byteLength());
+        return got.equals(want);
+    }
+
+    static boolean byteAtATime(String input, String want) {
+        Sha256 h = heap Sha256();
+        int8[] one = heap int8[1];
+        int32 i = 0;
+        while (i < input.byteLength()) {
+            one[0] = input.byteAt(i);
+            h.update(one, 1L);
+            i = i + 1;
+        }
+        String got #= h.hex();
+        return got.equals(want);
+    }
+
+    @Test
+    public void emptyString() {
+        Assert.isTrue(Sha256Test.oneShotHex("", Sha256Test.EMPTY));
+    }
+
+    @Test
+    public void abc() {
+        Assert.isTrue(Sha256Test.oneShotHex("abc", Sha256Test.ABC));
+    }
+
+    @Test
+    public void twoBlockMessage() {
+        Assert.isTrue(Sha256Test.oneShotHex(Sha256Test.TWO_BLOCK, Sha256Test.TWO_BLOCK_HEX));
+    }
+
+    @Test
+    public void fipsVectorsOneShotAndIncremental() {
+        Assert.isTrue(Sha256Test.oneShotHex("", Sha256Test.EMPTY));
+        Assert.isTrue(Sha256Test.byteAtATime("", Sha256Test.EMPTY));
+        Assert.isTrue(Sha256Test.oneShotHex("abc", Sha256Test.ABC));
+        Assert.isTrue(Sha256Test.byteAtATime("abc", Sha256Test.ABC));
+        Assert.isTrue(Sha256Test.oneShotHex(Sha256Test.TWO_BLOCK, Sha256Test.TWO_BLOCK_HEX));
+        Assert.isTrue(Sha256Test.byteAtATime(Sha256Test.TWO_BLOCK, Sha256Test.TWO_BLOCK_HEX));
+    }
+
+    @Test
+    public void incrementalEqualsOneShot() {
+        int8[] p1 #= Bytes.ascii("abc");
+        int8[] p2 #= Bytes.ascii("defg");
+        int8[] full #= Bytes.ascii("abcdefg");
+        Sha256 h = heap Sha256();
+        h.update(p1, 3L);
+        h.update(p2, 4L);
+        int8[] streamed #= h.digest();
+        int8[] oneshot #= Sha256.hash(full, 7L);
+        Assert.isTrue(Bytes.same(streamed, oneshot, 32));
+    }
+
+    @Test
+    public void instanceHexMatchesOneShot() {
+        int8[] data #= Bytes.ascii("abc");
+        Sha256 h = heap Sha256();
+        h.update(data, 3L);
+        String s #= h.hex();
+        Assert.isTrue(s.equals(Sha256Test.ABC));
+    }
+
+    @Test
+    public void finishProjectsFirst8Bytes() {
+        int8[] data #= Bytes.ascii("abc");
+        Sha256 h = heap Sha256();
+        h.update(data, 3L);
+        // First 8 bytes of SHA-256("abc"), ba 78 16 bf 8f 01 cf ea, folded little-endian.
+        int64 expected = -1527000031757436742L;
+        Assert.isTrue(h.finish() == expected);
+    }
+
+    @Test
+    public void resetClearsState() {
+        int8[] first #= Bytes.ascii("abc");
+        int8[] second #= Bytes.ascii("a");
+        Sha256 h = heap Sha256();
+        h.update(first, 3L);
+        int8[] firstDigest #= h.digest();
+        h.reset();
+        h.update(second, 1L);
+        int8[] secondDigest #= h.digest();
+        int8[] reference #= Sha256.hash(second, 1L);
+        Assert.isTrue(Bytes.same(secondDigest, reference, 32));
+    }
+}

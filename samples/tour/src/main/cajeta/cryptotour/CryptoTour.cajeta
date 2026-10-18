@@ -1,11 +1,29 @@
 package cryptotour;
 
+import cajeta.codec.Base32;
+import cajeta.hash.Hash;
+import cajeta.lang.String;
+import dev.cajeta.crypto.Blake3;
 import dev.cajeta.crypto.Crypto;
+import dev.cajeta.crypto.HmacSha1;
+import dev.cajeta.crypto.HmacSha256;
+import dev.cajeta.crypto.MD5;
+import dev.cajeta.crypto.Pbkdf2;
 import dev.cajeta.crypto.SecureRandom;
+import dev.cajeta.crypto.Sha1;
+import dev.cajeta.crypto.Sha256;
+import dev.cajeta.crypto.Totp;
 
 /**
- * The dev.cajeta.crypto tour: each demo checks its own output, so a nonzero
- * exit means a demonstrated contract regressed.
+ * The dev.cajeta.crypto tour. Each demo checks its own output against a
+ * pinned reference value, so a nonzero exit means a demonstrated contract
+ * regressed. The digests came from cajeta's stdlib tour (HashDemo) when these
+ * types moved here, and sha256sum, md5sum, sha1sum and b3sum agree on them.
+ *
+ * Picking a digest: SHA-256 for interop and integrity, BLAKE3 when speed
+ * matters, SHA-1 only for the WebSocket handshake constant, MD5 only for
+ * legacy interop. For non-cryptographic fingerprints use the stdlib's
+ * cajeta.hash.XXHash3.
  */
 public final class CryptoTour {
     static int32 failures = 0;
@@ -19,25 +37,115 @@ public final class CryptoTour {
         }
     }
 
-    /** Secure random bytes: a salt, then a buffer filled in place. */
-    static void secureRandom() {
-        System.stdout.println("SecureRandom");
-        int8[] salt #= SecureRandom.bytes(16L);
-        CryptoTour.check(salt.count() == 16L, "bytes(16) returns 16 bytes");
-        int8[] buf = heap int8[32];
-        SecureRandom.fill(buf, 32L);
-        int32 zeros = 0;
+    /** SHA-256 and BLAKE3: cryptographic fingerprints, BLAKE3 with any-length output. */
+    static void digests() {
+        System.stdout.println("Digests");
+        String msg = "the quick brown fox";
+        int8[] bytes #= msg.toBytes();
+        int64 len = (int64) msg.byteLength();
+
+        String sha #= Sha256.hashStringHex(msg);
+        CryptoTour.check(sha.equals("9ecb36561341d18eb65484e833efea61edc74b84cf5e6ae1b81c63533e25fc8f"),
+            "SHA-256 matches the reference value");
+
+        String b3 #= Blake3.hashStringHex(msg);
+        CryptoTour.check(b3.equals("6589539add86d80ad66e9a12104dc414cdeaf3f2e20486ca63cba42324af4856"),
+            "BLAKE3 matches the reference value");
+
+        // BLAKE3's extendable output: the first 32 bytes always equal the digest.
+        int8[] wide = heap int8[64];
+        Blake3.hashXof(bytes, len, wide);
+        int8[] digest #= Blake3.hash(bytes, len);
+        boolean prefix = true;
         int32 i = 0;
         while (i < 32) {
-            if (buf[i] == (int8) 0) { zeros = zeros + 1; }
+            if (wide[i] != digest[i]) { prefix = false; }
             i = i + 1;
         }
-        CryptoTour.check(zeros < 32, "fill(buf, 32) overwrites the buffer");
+        CryptoTour.check(prefix, "BLAKE3 XOF(64) starts with the 32-byte digest");
+
+        // SHA-1 is not for security; RFC 6455 fixes it for Sec-WebSocket-Accept.
+        String sha1 #= Sha1.hashStringHex(msg);
+        CryptoTour.check(sha1.equals("ced71fa7235231bed383facfdc41c4ddcc22ecf1"), "SHA-1 matches sha1sum");
+        Sha1 stream = heap Sha1();
+        stream.update(bytes, len);
+        int8[] streamed #= stream.digest();
+        int8[] oneShot #= Sha1.hash(bytes, len);
+        boolean agrees = true;
+        int32 j = 0;
+        while (j < 20) {
+            if (streamed[j] != oneShot[j]) { agrees = false; }
+            j = j + 1;
+        }
+        CryptoTour.check(agrees, "SHA-1 streaming digest() equals the one-shot hash()");
+
+        // MD5 only where a protocol fixes it, such as S3's Content-MD5.
+        String md5 #= MD5.hashHex(bytes, len);
+        CryptoTour.check(md5.equals("30f3c93e46436deb58ba70816a8ec124"), "MD5 matches md5sum");
+    }
+
+    /** Keys and passwords: HMAC-SHA256, PBKDF2, secure random, and a constant-time compare. */
+    static void keyed() {
+        System.stdout.println("Keyed and password primitives");
+        String keyText = "Jefe";
+        int8[] key #= keyText.toBytes();
+        String claim = "what do ya want for nothing?";
+        int8[] claimBytes #= claim.toBytes();
+        String mac #= HmacSha256.macHex(key, 4L, claimBytes, 28L);
+        CryptoTour.check(mac.equals("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
+            "HMAC-SHA256 matches RFC 4231 case 2");
+
+        String pw = "passwd";
+        int8[] pwBytes #= pw.toBytes();
+        String saltText = "salt";
+        int8[] salt #= saltText.toBytes();
+        int8[] derived #= Pbkdf2.sha256(pwBytes, 6L, salt, 4L, 1, 32);
+        String derivedHex #= HmacSha256.toHex(derived, 32L);
+        CryptoTour.check(derivedHex.equals("55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc"),
+            "PBKDF2-HMAC-SHA256 matches RFC 7914");
+
+        int8[] r1 #= SecureRandom.bytes(16L);
+        int8[] r2 = heap int8[16];
+        SecureRandom.fill(r2, 16L);
+        boolean differ = false;
+        int32 q = 0;
+        while (q < 16) {
+            if (r1[q] != r2[q]) { differ = true; }
+            q = q + 1;
+        }
+        CryptoTour.check(differ, "two SecureRandom draws differ");
+
+        int8[] expected #= HmacSha256.mac(key, 4L, claimBytes, 28L);
+        int8[] presented #= HmacSha256.mac(key, 4L, claimBytes, 28L);
+        CryptoTour.check(Hash.constantTimeEquals(expected, 32L, presented, 32L),
+            "the stdlib's constant-time compare accepts the matching MAC");
+        presented[31] = (int8) (presented[31] ^ (int8) 1);
+        CryptoTour.check(Hash.constantTimeEquals(expected, 32L, presented, 32L) == false,
+            "and rejects one that differs in its last byte");
+    }
+
+    /** One-time passwords: TOTP over HMAC-SHA1, the secret in Base32 inside an otpauth:// URI. */
+    static void oneTimePasswords() {
+        System.stdout.println("One-time passwords");
+        String keyText = "Jefe";
+        int8[] key #= keyText.toBytes();
+        String claim = "what do ya want for nothing?";
+        int8[] claimBytes #= claim.toBytes();
+        String mac1 #= HmacSha1.macHex(key, 4L, claimBytes, 28L);
+        CryptoTour.check(mac1.equals("effcdf6ae5eb2fa2d27416d5f184df9c259a7c79"), "HMAC-SHA1 matches RFC 2202");
+        String seedText = "12345678901234567890";
+        int8[] seed #= seedText.toBytes();
+        String otp #= Totp.format(Totp.code(seed, 20L, 59L, 30, 8), 8);
+        CryptoTour.check(otp.equals("94287082"), "TOTP-SHA1 matches RFC 6238 at t=59");
+        String b32 #= Base32.encode(seed, 20L);
+        CryptoTour.check(b32.equals("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"), "the secret's Base32 form");
     }
 
     public static int32 main() {
         System.stdout.println("dev.cajeta.crypto " + Crypto.version());
-        CryptoTour.secureRandom();
+        CryptoTour.digests();
+        CryptoTour.keyed();
+        CryptoTour.oneTimePasswords();
         return CryptoTour.failures == 0 ? 0 : 1;
     }
 }

@@ -1,0 +1,48 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.Pbkdf2;
+import dev.cajeta.unit.Assert;
+
+/** Ported from cajeta test/parser/CryptoPrimitivesTests.cpp (cajeta-crypto plan 2.1.1): RFC 7914 section 11. */
+public class Pbkdf2Test {
+
+    public Pbkdf2Test() { return; }
+
+    static #int8[] derive(String password, String salt, int32 iterations, int32 length) {
+        int8[] p #= Bytes.ascii(password);
+        int8[] s #= Bytes.ascii(salt);
+        return #Pbkdf2.sha256(p, (int64) password.byteLength(), s, (int64) salt.byteLength(), iterations, length);
+    }
+
+    @Test
+    public void rfc7914VectorOneIteration() {
+        int8[] k #= Pbkdf2Test.derive("passwd", "salt", 1, 64);
+        Assert.isTrue(Bytes.equalsHex(k, 64,
+            "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc"
+            + "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783"));
+    }
+
+    @Test
+    public void rfc7914Vector80000Iterations() {
+        int8[] k #= Pbkdf2Test.derive("Password", "NaCl", 80000, 64);
+        Assert.isTrue(Bytes.equalsHex(k, 64,
+            "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56"
+            + "a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d"));
+    }
+
+    @Test
+    public void saltChangesEveryByte() {
+        int8[] a #= Pbkdf2Test.derive("passwd", "salt", 2, 32);
+        int8[] b #= Pbkdf2Test.derive("passwd", "salt2", 2, 32);
+        Assert.isTrue(a.count() == 32L);
+        Assert.isTrue(b.count() == 32L);
+        int32 same = 0;
+        int32 i = 0;
+        while (i < 32) {
+            if (a[i] == b[i]) { same = same + 1; }
+            i = i + 1;
+        }
+        Assert.isTrue(same <= 4);
+    }
+}

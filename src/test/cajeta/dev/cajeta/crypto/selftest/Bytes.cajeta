@@ -1,0 +1,61 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+
+/** Test helpers: ASCII bytes from a string, bytes from hex, and digest comparison. */
+final class Bytes {
+
+    static #int8[] ascii(String s) {
+        int32 n = s.byteLength();
+        int8[] out = heap int8[n < 1 ? 1 : n];
+        int32 i = 0;
+        while (i < n) { out[i] = s.byteAt(i); i = i + 1; }
+        return #out;
+    }
+
+    static #int8[] repeated(int8 b, int32 n) {
+        int8[] out = heap int8[n < 1 ? 1 : n];
+        int32 i = 0;
+        while (i < n) { out[i] = b; i = i + 1; }
+        return #out;
+    }
+
+    static int32 nyb(int8 c) {
+        if (c >= (int8) 48 && c <= (int8) 57) { return (int32) c - 48; }
+        if (c >= (int8) 97 && c <= (int8) 102) { return (int32) c - 87; }
+        if (c >= (int8) 65 && c <= (int8) 70) { return (int32) c - 55; }
+        return 0;
+    }
+
+    static #int8[] hex(String h) {
+        int32 n = h.byteLength() / 2;
+        int8[] out = heap int8[n < 1 ? 1 : n];
+        int32 i = 0;
+        while (i < n) {
+            out[i] = (int8) ((Bytes.nyb(h.byteAt(2 * i)) << 4) | Bytes.nyb(h.byteAt(2 * i + 1)));
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** True when the first `n` bytes of `got` equal the hex string `want`. */
+    static boolean equalsHex(int8[] got, int32 n, String want) {
+        int8[] w #= Bytes.hex(want);
+        if (want.byteLength() != n * 2) { return false; }
+        int32 i = 0;
+        while (i < n) {
+            if (got[i] != w[i]) { return false; }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    static boolean same(int8[] a, int8[] b, int32 n) {
+        int32 i = 0;
+        while (i < n) {
+            if (a[i] != b[i]) { return false; }
+            i = i + 1;
+        }
+        return true;
+    }
+}
