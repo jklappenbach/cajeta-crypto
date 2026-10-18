@@ -1,0 +1,226 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.codec.Base64;
+import cajeta.lang.String;
+import dev.cajeta.crypto.sig.EcKeyPair;
+import dev.cajeta.crypto.sig.InvalidKeyException;
+import dev.cajeta.crypto.sig.Jwk;
+import dev.cajeta.crypto.sig.JwsAlgorithm;
+import dev.cajeta.crypto.sig.Signatures;
+import dev.cajeta.unit.Assert;
+
+/**
+ * cajeta-crypto plan 3.1: RS256 and ES256 over OpenSSL (spec 4). The RFC 7515
+ * appendix A.2 and A.3 vectors were extracted from the RFC text and verified
+ * with Python's cryptography package; the second-source vectors were generated
+ * with it on 2026-10-17 and are fixed here.
+ */
+public class SignaturesTest {
+
+    static String RS256_N = "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp"
+        + "-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOW"
+        + "vG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUs"
+        + "LA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9k"
+        + "G4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2"
+        + "PAcDTW9gb54h4FRWyuXpoQ";
+    static String RS256_JWS = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODA"
+        + "sDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.cC4hiUPoj9Ee"
+        + "tdgtv3hF80EGrhuB__dzERat0XF9g2VtQgr9PJbu3XOiZj5RZmh7AAuHIm4Bh-0Q"
+        + "c_lF5YKt_O8W2Fp5jujGbds9uJdbF9CUAr7t1dnZcAcQjbKBYNX4BAynRFdiuB--"
+        + "f_nZLgrnbyTyWzO75vRK5h6xBArLIARNPvkSjtQBMHlb1L07Qe7K0GarZRmB_eSN"
+        + "9383LcOLn6_dO--xi12jzDwusC-eOkHWEsqtFZESc6BfI7noOPqvhJ1phCnvWh6I"
+        + "eYI2w9QOYEUipUTI8np6LbgGY9Fs98rqVt5AXLIhWkWywlVmtVrBp0igcN_IoypG"
+        + "lUPQGe77Rw";
+    static String ES256_X = "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU";
+    static String ES256_Y = "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0";
+    static String ES256_JWS = "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODA"
+        + "sDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.DtEhU3ljbEg8"
+        + "L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqP"
+        + "P3-Kg6NU1Q";
+
+    static String GEN_MSG = "cajeta-crypto fixed vector, 2026-10-17";
+    static String RSA3072_N = "q70_4o0Dkx4dnUkJipHt6SZ_fYX_oy86FrO710HWKTeRyK4Q9rThQ1Q1jPwUYJ_Z"
+        + "t2FudNHhdbNsnIr0lCzmJ2uN_dsiWpGZk9hKyIIaJxWwKDzqPpzxJg_lEuspc-_B"
+        + "GS879dQCWI_hcPVYfeBxiR-6E_6Lh_qQWSzCAQG05TsOoIR5k7kJ_K7Tl1DvdiFs"
+        + "NpQ8uqItbaATz9xwVlwZNsRvY8gCm6cdWYz5Hvx-T_votytcCdhCX8xtmsx7_kRq"
+        + "BXkfp0NigSXWgI3pbNecyOTP7cpMR3HU7dJC_EPfgE2n9bJYrEs20XfzzGy7Y-7i"
+        + "kbu5JVS3FYUHg32-I3BLc9FNHbfcGgLKAtx0_5ANhkMLIlIGL-DR_B3jvRpDlKFM"
+        + "c_uXASydH0v9PjFFE068pdgSIwh-FkKueRldsGe-p88v7t-rF7KefOQsR2Q6bbjW"
+        + "2z4Si_8uz5VT15xlTdFfG0i6F44pm0HUZ01kGiAIF9qhtGPF0Abo_6VFKNguWIKl";
+    static String RSA3072_SIG = "nN1Pg3ne6GwngKZBNTHq68j0_6M1Fcb832e9LbkuVRMCuSnjdd6LvAAnlPtk5rdx"
+        + "tvlVbq4W3YQ1vlHX_mJiKupXt9MtHoJGLrN1jsXiqpmQazn_akAZR-iAZRmL7laR"
+        + "tjrrkOBreAoApezuKOiFP39xgRmQqTrCqWN1QNxs41hOdHk6EyyEW6MQJ4UObAku"
+        + "u6CFUDSiBnU_xrGsKTnTHw1uOL4CDT6u8hv2fjMXhmY3E2ZB51zjeUFo47uT4fEl"
+        + "kPkZW-rNlStVK6RGL9RiTlSD-4yCGOM9azOvhxTCITd8E023An5Z4xCqc14wt0AP"
+        + "DYg-8fGviWehXTz5UoZ9vsiKl-ZAyhz5phtVmAUwNJhGjXmQbr0oovcqXGpC3_dP"
+        + "VY4ujhj3Ds_fOHZACwqD9B08fpJI1qhoOirquANiak_L_ifoNGsyvr8QG_W8-rQh"
+        + "jjMjRLUYwCtJ2QfCoX_7qMtge3lRx4WEzwGtIuxyuYhNT4oMS0jQMzdPn6x0a7lg";
+    static String P256_X = "V9XTXhQg2HA3FhZYaNGgHVgRdyT-_TICOsBUQaiWBvc";
+    static String P256_Y = "R7jkgLgRmoNzQmAgiGlHiRjUw5R2eGUwqGgPjHruG3c";
+    static String P256_SIG = "it25vdGT0gbhIsczEwdvygBjKoTaSu6cG4mVTBhrr7ncMakCnEowpU8k7oF1Cwar"
+        + "-5CVKW1egel5afci_jb0gA";
+    static String RSA1024_N = "v3FZCLT7zE9gpj7yf5VfnUYIE0xyoU_VZsFsd6mDzvneoZ0xs8gAyQ6IddqS1rlR"
+        + "vK8wjMzE20nEJT9K2JxndNtWwCvaZJXKc1eL-ukb_ELExh7Y8KPeCeL2tLoVTbeP"
+        + "E21yRiJFsHG_Teb6lZSNrh31-iXC-rFmAxiU9OAKXR8";
+    static String P384_X = "v9fqDMe7HGDiosVrQLsQUEu4rZs_H24Qsw_FO8JbuNQj8jFV8hOBiAix5n_tP8hn";
+    static String P384_Y = "SXVR3ZQzzHcDcgJ7jRBxwdZbXYqvDj7dxRUPpUnnxgWpEy-2bFpob1_ypYJeoPKE";
+    static String OFFCURVE_Y = "R7jkgLgRmoNzQmAgiGlHiRjUw5R2eGUwqGgPjHruG3g";
+
+    public SignaturesTest() { return; }
+
+    static #String rsaJwk(String n, String e) {
+        String j = "{\"kty\":\"RSA\",\"n\":\"" + n + "\",\"e\":\"" + e + "\"}";
+        return #j;
+    }
+
+    static #String ecJwk(String crv, String x, String y) {
+        String j = "{\"kty\":\"EC\",\"crv\":\"" + crv + "\",\"x\":\"" + x + "\",\"y\":\"" + y + "\"}";
+        return #j;
+    }
+
+    /** The index of the second '.' in a compact JWS: the signing input ends there. */
+    static int32 secondDot(String jws) {
+        int32 seen = 0;
+        int32 i = 0;
+        while (i < jws.byteLength()) {
+            if (jws.byteAt(i) == (int8) 46) {
+                seen = seen + 1;
+                if (seen == 2) { return i; }
+            }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /** Verify a compact JWS against `key`, with `flip` = 0 none, 1 an input byte, 2 a signature byte. */
+    static boolean verifyCompact(JwsAlgorithm alg, Jwk key, String jws, int32 flip) {
+        int32 d = SignaturesTest.secondDot(jws);
+        String inputText #= jws.substring(0, d);
+        String sigText #= jws.substring(d + 1, jws.byteLength());
+        int8[] input #= Bytes.ascii(inputText);
+        int8[] sig #= Base64.decode(sigText);
+        if (flip == 1) { input[3] = (int8) (input[3] ^ (int8) 1); }
+        if (flip == 2) { sig[5] = (int8) (sig[5] ^ (int8) 1); }
+        return Signatures.verify(alg, key, input, (int64) d, sig, sig.count());
+    }
+
+    static boolean verifyRaw(JwsAlgorithm alg, Jwk key, String msg, String sigB64) {
+        int8[] input #= Bytes.ascii(msg);
+        int8[] sig #= Base64.decode(sigB64);
+        return Signatures.verify(alg, key, input, (int64) msg.byteLength(), sig, sig.count());
+    }
+
+    static boolean refused(String json) {
+        boolean threw = false;
+        try {
+            Jwk k #= Jwk.parse(json);
+        } catch (InvalidKeyException e) {
+            threw = true;
+        }
+        return threw;
+    }
+
+    // 3.1.1: RFC 7515 A.2 verifies with the RFC's JWK and fails with one byte flipped.
+    @Test
+    public void rfc7515Rs256() {
+        String j #= SignaturesTest.rsaJwk(SignaturesTest.RS256_N, "AQAB");
+        Jwk key #= Jwk.parse(j);
+        Assert.isTrue(key.isRsa());
+        Assert.isTrue(SignaturesTest.verifyCompact(JwsAlgorithm.RS256, key, SignaturesTest.RS256_JWS, 0));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.RS256, key, SignaturesTest.RS256_JWS, 1));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.RS256, key, SignaturesTest.RS256_JWS, 2));
+    }
+
+    // 3.1.2: RFC 7515 A.3, the same for ES256.
+    @Test
+    public void rfc7515Es256() {
+        String j #= SignaturesTest.ecJwk("P-256", SignaturesTest.ES256_X, SignaturesTest.ES256_Y);
+        Jwk key #= Jwk.parse(j);
+        Assert.isTrue(key.isEc());
+        Assert.isTrue(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, key, SignaturesTest.ES256_JWS, 0));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, key, SignaturesTest.ES256_JWS, 1));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, key, SignaturesTest.ES256_JWS, 2));
+    }
+
+    // 3.1.3: weak or foreign keys are refused when the key is built.
+    @Test
+    public void unusableKeysAreRefused() {
+        String small #= SignaturesTest.rsaJwk(SignaturesTest.RSA1024_N, "AQAB");
+        Assert.isTrue(SignaturesTest.refused(small));
+        String p384 #= SignaturesTest.ecJwk("P-384", SignaturesTest.P384_X, SignaturesTest.P384_Y);
+        Assert.isTrue(SignaturesTest.refused(p384));
+        String off #= SignaturesTest.ecJwk("P-256", SignaturesTest.P256_X, SignaturesTest.OFFCURVE_Y);
+        Assert.isTrue(SignaturesTest.refused(off));
+        Assert.isTrue(SignaturesTest.refused("{\"kty\":\"EC\",\"crv\":\"P-256\",\"y\":\"" + SignaturesTest.P256_Y + "\"}"));
+        Assert.isTrue(SignaturesTest.refused("{\"kty\":\"oct\",\"k\":\"AAAA\"}"));
+        Assert.isTrue(SignaturesTest.refused("not json"));
+    }
+
+    // 3.1.4: a mismatched key type or a malformed signature answers false, never raises.
+    @Test
+    public void mismatchesAnswerFalse() {
+        String rj #= SignaturesTest.rsaJwk(SignaturesTest.RS256_N, "AQAB");
+        Jwk rsa #= Jwk.parse(rj);
+        String ej #= SignaturesTest.ecJwk("P-256", SignaturesTest.ES256_X, SignaturesTest.ES256_Y);
+        Jwk ec #= Jwk.parse(ej);
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.RS256, ec, SignaturesTest.RS256_JWS, 0));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, rsa, SignaturesTest.ES256_JWS, 0));
+        int8[] input #= Bytes.ascii("abc");
+        int8[] s63 = heap int8[63];
+        int8[] s65 = heap int8[65];
+        int8[] none = heap int8[1];
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.ES256, ec, input, 3L, s63, 63L));
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.ES256, ec, input, 3L, s65, 65L));
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.ES256, ec, input, 3L, none, 0L));
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.RS256, rsa, input, 3L, none, 0L));
+    }
+
+    // 3.1.5: a JWK whose alg disagrees with the algorithm being checked answers false.
+    @Test
+    public void jwkAlgMustAgree() {
+        String plain #= SignaturesTest.ecJwk("P-256", SignaturesTest.ES256_X, SignaturesTest.ES256_Y);
+        Jwk ok #= Jwk.parse(plain);
+        Assert.isTrue(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, ok, SignaturesTest.ES256_JWS, 0));
+        String tagged = "{\"kty\":\"EC\",\"crv\":\"P-256\",\"alg\":\"ES512\",\"x\":\""
+            + SignaturesTest.ES256_X + "\",\"y\":\"" + SignaturesTest.ES256_Y + "\"}";
+        Jwk wrong #= Jwk.parse(tagged);
+        Assert.isTrue(wrong.alg().equals("ES512"));
+        Assert.isFalse(SignaturesTest.verifyCompact(JwsAlgorithm.ES256, wrong, SignaturesTest.ES256_JWS, 0));
+    }
+
+    // 3.1.6: generated P-256 pairs sign, verify through their public JWK, and never publish d.
+    @Test
+    public void generatedPairSignsAndVerifies() {
+        EcKeyPair a #= EcKeyPair.generateP256();
+        EcKeyPair b #= EcKeyPair.generateP256();
+        String ja #= a.publicJwk("k1");
+        String jb #= b.publicJwk("k2");
+        Assert.isFalse(ja.equals(jb));
+        Assert.isTrue(ja.indexOf("\"d\"") < 0L);
+        Assert.isTrue(ja.indexOf("\"kid\":\"k1\"") >= 0L);
+        Assert.isTrue(ja.indexOf("\"alg\":\"ES256\"") >= 0L);
+        Jwk ka #= Jwk.parse(ja);
+        Assert.isTrue(ka.kid().equals("k1"));
+        int8[] msg #= Bytes.ascii("header.payload");
+        int8[] sig #= a.sign(msg, 14L);
+        Assert.isTrue(sig.count() == 64L);
+        Assert.isTrue(Signatures.verify(JwsAlgorithm.ES256, ka, msg, 14L, sig, 64L));
+        sig[0] = (int8) (sig[0] ^ (int8) 1);
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.ES256, ka, msg, 14L, sig, 64L));
+        Jwk kb #= Jwk.parse(jb);
+        sig[0] = (int8) (sig[0] ^ (int8) 1);
+        Assert.isFalse(Signatures.verify(JwsAlgorithm.ES256, kb, msg, 14L, sig, 64L));
+    }
+
+    // 3.1.7: a second source, a 3072-bit RSA key and a P-256 key generated outside cajeta.
+    @Test
+    public void secondSourceVectorsVerify() {
+        String rj #= SignaturesTest.rsaJwk(SignaturesTest.RSA3072_N, "AQAB");
+        Jwk rsa #= Jwk.parse(rj);
+        Assert.isTrue(SignaturesTest.verifyRaw(JwsAlgorithm.RS256, rsa, SignaturesTest.GEN_MSG, SignaturesTest.RSA3072_SIG));
+        String ej #= SignaturesTest.ecJwk("P-256", SignaturesTest.P256_X, SignaturesTest.P256_Y);
+        Jwk ec #= Jwk.parse(ej);
+        Assert.isTrue(SignaturesTest.verifyRaw(JwsAlgorithm.ES256, ec, SignaturesTest.GEN_MSG, SignaturesTest.P256_SIG));
+        Assert.isFalse(SignaturesTest.verifyRaw(JwsAlgorithm.ES256, ec, "another message", SignaturesTest.P256_SIG));
+    }
+}

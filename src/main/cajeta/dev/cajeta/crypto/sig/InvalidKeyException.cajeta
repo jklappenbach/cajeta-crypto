@@ -1,0 +1,12 @@
+package dev.cajeta.crypto.sig;
+
+import cajeta.error.RecoverableException;
+import cajeta.lang.String;
+
+/** A key that cannot be used: malformed, too weak, or of an unsupported kind. */
+public class InvalidKeyException extends RecoverableException {
+    public InvalidKeyException(String detail) {
+        this.message = "invalid key: " + detail;
+        this.cause = 0;
+    }
+}

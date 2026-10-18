@@ -1,0 +1,153 @@
+package dev.cajeta.crypto.sig;
+
+import cajeta.codec.Base64;
+import cajeta.codec.Base64Exception;
+import cajeta.codec.json.Json;
+import cajeta.codec.json.JsonParseException;
+import cajeta.codec.json.JsonValue;
+import cajeta.lang.String;
+
+/**
+ * A public key as a JSON Web Key (RFC 7517): RSA (`n`, `e`) or EC P-256
+ * (`x`, `y`), with the optional `kid` and `alg` it was published with. A key
+ * is built only through `parse` or the component factories, and each refuses
+ * a key that cannot be used: RSA under 2048 bits (RFC 7518 section 3.3), any
+ * curve but P-256, a point off the curve, a missing component.
+ *
+ * ```cajeta
+ * Jwk key #= Jwk.parse(jwkJson);
+ * boolean ok = Signatures.verify(JwsAlgorithm.RS256, key, input, inputLen, sig, sigLen);
+ * ```
+ */
+public final class Jwk {
+    @Native(symbol = "__cajeta_crypto_rsa_bits", lib = "cajeta_crypto")
+    static int32 rsaBits(int8[] n, int64 nLen, int8[] e, int64 eLen);
+
+    @Native(symbol = "__cajeta_crypto_p256_check", lib = "cajeta_crypto")
+    static int32 p256Check(int8[] x, int8[] y);
+
+    boolean rsaKey;
+    int8[] first;     // n for RSA, x for EC
+    int8[] second;    // e for RSA, y for EC
+    String kidText;
+    String algText;
+
+    Jwk(boolean rsaKey, #int8[] first, #int8[] second) {
+        this.rsaKey = rsaKey;
+        this.first #= first;
+        this.second #= second;
+        this.kidText = null;
+        this.algText = null;
+    }
+
+    static #int8[] copy(int8[] src, int64 len) {
+        int8[] out = heap int8[len < 1L ? 1L : len];
+        int64 i = 0L;
+        while (i < len) { out[i] = src[i]; i = i + 1L; }
+        return #out;
+    }
+
+    /** An RSA public key from its big-endian modulus and exponent. */
+    public static #Jwk rsa(int8[] n, int64 nLen, int8[] e, int64 eLen) {
+        if (nLen <= 0L || eLen <= 0L || nLen > n.count() || eLen > e.count()) {
+            throw heap InvalidKeyException("RSA n and e must be present");
+        }
+        int32 bits = Jwk.rsaBits(n, nLen, e, eLen);
+        if (bits < 0) {
+            throw heap InvalidKeyException("OpenSSL rejects this RSA key");
+        }
+        if (bits < 2048) {
+            throw heap InvalidKeyException("RSA keys under 2048 bits are refused (RFC 7518 section 3.3)");
+        }
+        int8[] nc #= Jwk.copy(n, nLen);
+        int8[] ec #= Jwk.copy(e, eLen);
+        Jwk k = heap Jwk(true, #nc, #ec);
+        return #k;
+    }
+
+    /** A P-256 public key from its 32-byte big-endian coordinates. */
+    public static #Jwk p256(int8[] x, int8[] y) {
+        if (x.count() != 32L || y.count() != 32L) {
+            throw heap InvalidKeyException("P-256 x and y are 32 bytes each");
+        }
+        if (Jwk.p256Check(x, y) != 0) {
+            throw heap InvalidKeyException("the point is not on P-256");
+        }
+        int8[] xc #= Jwk.copy(x, 32L);
+        int8[] yc #= Jwk.copy(y, 32L);
+        Jwk k = heap Jwk(false, #xc, #yc);
+        return #k;
+    }
+
+    /** A key from one JWK object. Throws InvalidKeyException for anything unusable. */
+    public static #Jwk parse(String json) {
+        try {
+            JsonValue v #= Json.parse(json);
+            if (v.kind() != JsonValue.OBJECT) {
+                throw heap InvalidKeyException("a JWK is a JSON object");
+            }
+            String kty #= Jwk.member(v, "kty");
+            if (kty.equals("RSA")) {
+                int8[] n #= Jwk.component(v, "n");
+                int8[] e #= Jwk.component(v, "e");
+                Jwk k #= Jwk.rsa(n, n.count(), e, e.count());
+                Jwk.meta(k, v);
+                return #k;
+            }
+            if (kty.equals("EC")) {
+                String crv #= Jwk.member(v, "crv");
+                if (!crv.equals("P-256")) {
+                    throw heap InvalidKeyException("curve '" + crv + "' is not supported; P-256 is");
+                }
+                int8[] x #= Jwk.component(v, "x");
+                int8[] y #= Jwk.component(v, "y");
+                Jwk k #= Jwk.p256(x, y);
+                Jwk.meta(k, v);
+                return #k;
+            }
+            throw heap InvalidKeyException("kty '" + kty + "' is not supported; RSA and EC are");
+        } catch (JsonParseException e) {
+            throw heap InvalidKeyException("not a JSON object");
+        } catch (Base64Exception e) {
+            throw heap InvalidKeyException("a component is not base64url");
+        }
+    }
+
+    /** A string member, or "" when absent or not a string. */
+    static #String member(JsonValue obj, String name) {
+        JsonValue v = obj.object().get(name);
+        if (v == null || v.kind() != JsonValue.STRING) {
+            String none = "";
+            return #none;
+        }
+        return #v.asString();
+    }
+
+    /** A required base64url component, decoded. */
+    static #int8[] component(JsonValue obj, String name) {
+        String text #= Jwk.member(obj, name);
+        if (text.byteLength() == 0) {
+            throw heap InvalidKeyException("missing '" + name + "'");
+        }
+        return #Base64.decode(text);
+    }
+
+    static void meta(Jwk k, JsonValue v) {
+        String kid #= Jwk.member(v, "kid");
+        if (kid.byteLength() > 0) { k.kidText #= kid; }
+        String alg #= Jwk.member(v, "alg");
+        if (alg.byteLength() > 0) { k.algText #= alg; }
+    }
+
+    /** True for an RSA key. */
+    public boolean isRsa() { return this.rsaKey; }
+
+    /** True for an EC P-256 key. */
+    public boolean isEc() { return !this.rsaKey; }
+
+    /** The key id the JWK carried, or null. */
+    public String kid() { return this.kidText; }
+
+    /** The `alg` the JWK carried, or null. Verification refuses any other algorithm. */
+    public String alg() { return this.algText; }
+}

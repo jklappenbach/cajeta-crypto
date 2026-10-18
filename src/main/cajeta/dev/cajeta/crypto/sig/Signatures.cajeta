@@ -1,0 +1,45 @@
+package dev.cajeta.crypto.sig;
+
+import cajeta.lang.String;
+
+/**
+ * JWS signature verification (spec 4.3). The algorithm comes from the caller,
+ * never from the token or the key, so a token cannot choose its own check.
+ * Every failure, a wrong key type, a malformed or wrong-length signature, a
+ * JWK whose `alg` disagrees, answers false and never raises.
+ */
+public final class Signatures {
+    @Native(symbol = "__cajeta_crypto_rs256_verify", lib = "cajeta_crypto")
+    static int32 rs256Verify(int8[] n, int64 nLen, int8[] e, int64 eLen,
+                             int8[] msg, int64 msgLen, int8[] sig, int64 sigLen);
+
+    @Native(symbol = "__cajeta_crypto_es256_verify", lib = "cajeta_crypto")
+    static int32 es256Verify(int8[] x, int8[] y, int8[] msg, int64 msgLen, int8[] sig, int64 sigLen);
+
+    /**
+     * True when `sig[0..sigLen)` is a valid `alg` signature of
+     * `input[0..inputLen)` under `key`. RS256 is RSASSA-PKCS1-v1_5 with
+     * SHA-256; ES256 is ECDSA P-256 with SHA-256 over the 64-byte r || s.
+     */
+    public static boolean verify(JwsAlgorithm alg, Jwk key, int8[] input, int64 inputLen,
+                                 int8[] sig, int64 sigLen) {
+        if (key == null || input == null || sig == null) { return false; }
+        if (inputLen < 0L || inputLen > input.count() || sigLen <= 0L || sigLen > sig.count()) {
+            return false;
+        }
+        if (key.algText != null) {
+            String want = alg == JwsAlgorithm.RS256 ? "RS256" : "ES256";
+            if (!key.algText.equals(want)) { return false; }
+        }
+        if (alg == JwsAlgorithm.RS256) {
+            if (!key.rsaKey) { return false; }
+            return Signatures.rs256Verify(key.first, key.first.count(), key.second, key.second.count(),
+                input, inputLen, sig, sigLen) == 1;
+        }
+        if (alg == JwsAlgorithm.ES256) {
+            if (key.rsaKey) { return false; }
+            return Signatures.es256Verify(key.first, key.second, input, inputLen, sig, sigLen) == 1;
+        }
+        return false;
+    }
+}

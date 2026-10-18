@@ -13,6 +13,11 @@ import dev.cajeta.crypto.SecureRandom;
 import dev.cajeta.crypto.Sha1;
 import dev.cajeta.crypto.Sha256;
 import dev.cajeta.crypto.Totp;
+import dev.cajeta.crypto.sig.EcKeyPair;
+import dev.cajeta.crypto.sig.InvalidKeyException;
+import dev.cajeta.crypto.sig.Jwk;
+import dev.cajeta.crypto.sig.JwsAlgorithm;
+import dev.cajeta.crypto.sig.Signatures;
 
 /**
  * The dev.cajeta.crypto tour. Each demo checks its own output against a
@@ -141,11 +146,35 @@ public final class CryptoTour {
         CryptoTour.check(b32.equals("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"), "the secret's Base32 form");
     }
 
+    /** JWS signatures: issue ES256 under a fresh pair, verify through its published JWK. */
+    static void signatures() {
+        System.stdout.println("Signatures");
+        EcKeyPair pair #= EcKeyPair.generateP256();
+        String jwk #= pair.publicJwk("key-1");
+        Jwk key #= Jwk.parse(jwk);
+        String inputText = "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJhZGEifQ";
+        int8[] input #= inputText.toBytes();
+        int64 n = (int64) inputText.byteLength();
+        int8[] sig #= pair.sign(input, n);
+        CryptoTour.check(Signatures.verify(JwsAlgorithm.ES256, key, input, n, sig, 64L),
+            "an ES256 signature verifies under the published JWK");
+        CryptoTour.check(!Signatures.verify(JwsAlgorithm.RS256, key, input, n, sig, 64L),
+            "the caller's algorithm decides: RS256 with an EC key answers false");
+        boolean refused = false;
+        try {
+            Jwk weak #= Jwk.parse("{\"kty\":\"oct\",\"k\":\"AAAA\"}");
+        } catch (InvalidKeyException e) {
+            refused = true;
+        }
+        CryptoTour.check(refused, "a symmetric JWK is refused with InvalidKeyException");
+    }
+
     public static int32 main() {
         System.stdout.println("dev.cajeta.crypto " + Crypto.version());
         CryptoTour.digests();
         CryptoTour.keyed();
         CryptoTour.oneTimePasswords();
+        CryptoTour.signatures();
         return CryptoTour.failures == 0 ? 0 : 1;
     }
 }

@@ -1,0 +1,87 @@
+package dev.cajeta.crypto.sig;
+
+import cajeta.codec.Base64;
+import cajeta.error.UnrecoverableException;
+import cajeta.lang.String;
+
+/**
+ * A P-256 key pair for issuing ES256 signatures (spec 4.5). The private scalar
+ * lives in this object's own int8[] and is never published: `publicJwk`
+ * carries only x and y. It is not zeroized when the pair is dropped.
+ *
+ * ```cajeta
+ * EcKeyPair pair #= EcKeyPair.generateP256();
+ * int8[] sig #= pair.sign(input, inputLen);     // 64-byte r || s
+ * String jwk #= pair.publicJwk("key-1");        // serve this from a JWKS
+ * ```
+ */
+public final class EcKeyPair {
+    @Native(symbol = "__cajeta_crypto_p256_generate", lib = "cajeta_crypto")
+    static int32 generateNative(int8[] d, int8[] x, int8[] y);
+
+    @Native(symbol = "__cajeta_crypto_es256_sign", lib = "cajeta_crypto")
+    static int32 signNative(int8[] d, int8[] x, int8[] y, int8[] msg, int64 msgLen, int8[] sig);
+
+    int8[] d;
+    int8[] x;
+    int8[] y;
+
+    EcKeyPair(#int8[] d, #int8[] x, #int8[] y) {
+        this.d #= d;
+        this.x #= x;
+        this.y #= y;
+    }
+
+    /** A fresh pair from OpenSSL's generator. */
+    public static #EcKeyPair generateP256() {
+        int8[] d = heap int8[32];
+        int8[] x = heap int8[32];
+        int8[] y = heap int8[32];
+        if (EcKeyPair.generateNative(d, x, y) != 0) {
+            throw heap UnrecoverableException("EcKeyPair: OpenSSL could not generate a P-256 key");
+        }
+        EcKeyPair k = heap EcKeyPair(#d, #x, #y);
+        return #k;
+    }
+
+    /** The ES256 signature of `input[0..len)`, as the 64-byte r || s. */
+    public #int8[] sign(int8[] input, int64 len) {
+        if (len < 0L || len > input.count()) {
+            throw heap UnrecoverableException("EcKeyPair.sign: len exceeds the input");
+        }
+        int8[] sig = heap int8[64];
+        if (EcKeyPair.signNative(this.d, this.x, this.y, input, len, sig) != 0) {
+            throw heap UnrecoverableException("EcKeyPair.sign: OpenSSL could not sign");
+        }
+        return #sig;
+    }
+
+    /** The public half as a JWK object: kty, crv, x, y, kid, alg ES256 and use sig; never d. */
+    public #String publicJwk(String kid) {
+        String xs #= Base64.encodeUrlSafe(this.x, 32L);
+        String ys #= Base64.encodeUrlSafe(this.y, 32L);
+        String ks #= EcKeyPair.jsonText(kid);
+        String j = "{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"" + xs + "\",\"y\":\"" + ys
+            + "\",\"kid\":\"" + ks + "\",\"alg\":\"ES256\",\"use\":\"sig\"}";
+        return #j;
+    }
+
+    /** The public half as a key for verification. */
+    public #Jwk publicKey() {
+        return #Jwk.p256(this.x, this.y);
+    }
+
+    /** `s` with `"` and `\` escaped for a JSON string. */
+    static #String jsonText(String s) {
+        String out = "";
+        int32 i = 0;
+        while (i < s.byteLength()) {
+            int8 c = s.byteAt(i);
+            if (c == (int8) 34) { out = out + "\\\""; }
+            else if (c == (int8) 92) { out = out + "\\\\"; }
+            else { out = out + s.substring(i, i + 1); }
+            i = i + 1;
+        }
+        return #out;
+    }
+}

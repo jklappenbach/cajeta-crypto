@@ -9,7 +9,7 @@
 | Package | Contents | State |
 |---|---|---|
 | `dev.cajeta.crypto` | `Sha1`, `Sha256`, `MD5`, `Blake3`, `HmacSha1`, `HmacSha256`, `Pbkdf2`, `Totp`, `SecureRandom`, moved from `cajeta.hash` with the same names and APIs | done |
-| `dev.cajeta.crypto.sig` | RS256 and ES256 verification, ES256 signing, JWK keys | planned |
+| `dev.cajeta.crypto.sig` | `Jwk`, `Signatures`, `EcKeyPair`, `JwsAlgorithm`, `InvalidKeyException`: RS256 and ES256 verification, ES256 signing, JWK keys | done |
 | `dev.cajeta.crypto.tls` | TLS, moving from `cajeta.io.net.tls` | planned |
 
 ## Use

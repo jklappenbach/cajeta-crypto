@@ -1,0 +1,7 @@
+package dev.cajeta.crypto.sig;
+
+/** The JWS algorithms this library verifies (RFC 7518 section 3). */
+public enum JwsAlgorithm {
+    RS256,
+    ES256
+}
