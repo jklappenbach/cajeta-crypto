@@ -22,5 +22,5 @@ SecureRandom.fill(buf, 32);              // overwrite the first 32
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/SecureRandom.cajeta`](../../../runtime/src/dev/cajeta/crypto/SecureRandom.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/SecureRandom.cajeta`](../src/main/cajeta/dev/cajeta/crypto/SecureRandom.cajeta)
 - [Pbkdf2](Pbkdf2.md) — salts, [HmacSha256](HmacSha256.md) — keys

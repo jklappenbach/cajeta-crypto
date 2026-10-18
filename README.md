@@ -10,7 +10,7 @@
 |---|---|---|
 | `dev.cajeta.crypto` | `Sha1`, `Sha256`, `MD5`, `Blake3`, `HmacSha1`, `HmacSha256`, `Pbkdf2`, `Totp`, `SecureRandom`, moved from `cajeta.hash` with the same names and APIs | done |
 | `dev.cajeta.crypto.sig` | `Jwk`, `Signatures`, `EcKeyPair`, `JwsAlgorithm`, `InvalidKeyException`: RS256 and ES256 verification, ES256 signing, JWK keys | done |
-| `dev.cajeta.crypto.tls` | TLS, moving from `cajeta.io.net.tls` | planned |
+| `dev.cajeta.crypto.tls` | `TlsStream`, `TlsListener`, `TlsConnection`, `TlsException`, `CertificateInvalidException`, moved from `cajeta.io.net.tls`: TLS 1.2+ over the stdlib's sockets, verifying clients, server termination, ALPN | done |
 
 ## Use
 
@@ -26,7 +26,9 @@ int8[] salt #= SecureRandom.bytes(16L);
 String digest #= Sha256.hashStringHex("the quick brown fox");
 ```
 
-Code that imported these types from `cajeta.hash` changes only the import: `cajeta.hash.Sha256` becomes `dev.cajeta.crypto.Sha256`. The `cajeta.hash.Hasher` interface, `XXHash3`, `SipHash` and `Hash.constantTimeEquals` stay in the stdlib.
+Code that imported these types from `cajeta.hash` or `cajeta.io.net.tls` changes only the import: `cajeta.hash.Sha256` becomes `dev.cajeta.crypto.Sha256`, and `cajeta.io.net.tls.TlsStream` becomes `dev.cajeta.crypto.tls.TlsStream`. The `cajeta.hash.Hasher` interface, `XXHash3`, `SipHash` and `Hash.constantTimeEquals` stay in the stdlib.
+
+A program that uses TLS declares the `network` capability, as this library does. The TLS tests and the tour use self-signed fixtures minted by `tools/mint-test-certs.c`; their keys protect nothing.
 
 The `.cja` carries the shim's static archive for linux-x64, linux-arm64, macos-arm64 and windows-x64. A program with this library on its classpath links the shim even if it never calls it. The compiler roots every classpath class through its reflection tables (spec 2.4).
 

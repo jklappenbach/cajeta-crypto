@@ -1,0 +1,28 @@
+package cryptotour;
+
+import cajeta.lang.String;
+
+/**
+ * A self-signed P-256 certificate for CN and SAN localhost, with its key, so
+ * the TLS section runs without an openssl CLI. It is the test suite's
+ * TestCerts.LOCALHOST pair (tools/mint-test-certs.c), valid until 2126. The
+ * key protects nothing; a real server reads its own from disk.
+ */
+final class TourCert {
+    static String LOCALHOST_CERT =
+        "-----BEGIN CERTIFICATE-----\n" +
+        "MIIBKzCB0gIBATAKBggqhkjOPQQDAjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwIBcN\n" +
+        "MjYxMDE4MDI0NDEyWhgPMjEyNjA5MjQwMzQ0MTJaMBQxEjAQBgNVBAMMCWxvY2Fs\n" +
+        "aG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABOhE9yekbv4dFvNbU3nh+O9a\n" +
+        "O1cJzx8gHpftzKXvFmuYGT7Thkw817YeBrrUT0poDFw1FTIVtEVQudua6Y4wRaej\n" +
+        "GDAWMBQGA1UdEQQNMAuCCWxvY2FsaG9zdDAKBggqhkjOPQQDAgNIADBFAiAmKM+c\n" +
+        "GTwTNO7Kd9vVKytFHxodgk7YdF5T0M3sV8bQCgIhALY6vbJFToZ9yWWCsDR6qeK3\n" +
+        "4nq79LEgw1805AP26qGZ\n" +
+        "-----END CERTIFICATE-----\n";
+    static String LOCALHOST_KEY =
+        "-----BEGIN PRIVATE KEY-----\n" +
+        "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgFHrT4kk8TwYdNonP\n" +
+        "aYGMzv1d2+1LuR3og88OomJgsFyhRANCAAToRPcnpG7+HRbzW1N54fjvWjtXCc8f\n" +
+        "IB6X7cyl7xZrmBk+04ZMPNe2Hga61E9KaAxcNRUyFbRFULnbmumOMEWn\n" +
+        "-----END PRIVATE KEY-----\n";
+}

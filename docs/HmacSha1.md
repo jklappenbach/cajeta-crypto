@@ -28,5 +28,5 @@ String hex #= HmacSha1.macHex(key, 20, msg, 8);         // 40 lowercase hex char
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/HmacSha1.cajeta`](../../../runtime/src/dev/cajeta/crypto/HmacSha1.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/HmacSha1.cajeta`](../src/main/cajeta/dev/cajeta/crypto/HmacSha1.cajeta)
 - [Totp](Totp.md) — the caller, [HmacSha256](HmacSha256.md) — the MAC for everything else

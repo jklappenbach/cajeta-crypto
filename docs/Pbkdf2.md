@@ -20,5 +20,5 @@ int8[] key #= Pbkdf2.sha256(password, 12, salt, 16, 600000, 32);
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/Pbkdf2.cajeta`](../../../runtime/src/dev/cajeta/crypto/Pbkdf2.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/Pbkdf2.cajeta`](../src/main/cajeta/dev/cajeta/crypto/Pbkdf2.cajeta)
 - [HmacSha256](HmacSha256.md) — the PRF, [SecureRandom](SecureRandom.md) — where the salt comes from

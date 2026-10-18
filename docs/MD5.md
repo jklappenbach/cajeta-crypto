@@ -53,5 +53,5 @@ int8[] digest #= m.digest();            // 16 bytes
 ## See also
 
 - Tour: [HashDemo](../../../samples/tour/src/main/cajeta/tour/hash/HashDemo.cajeta)
-- Source: [`runtime/src/dev/cajeta/crypto/MD5.cajeta`](../../../runtime/src/dev/cajeta/crypto/MD5.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/MD5.cajeta`](../src/main/cajeta/dev/cajeta/crypto/MD5.cajeta)
 - [XXHash3](XXHash3.md) — `hash128` is the direct MD5 replacement for fingerprints, [Sha256](Sha256.md) / [Blake3](Blake3.md) — for cryptographic digests

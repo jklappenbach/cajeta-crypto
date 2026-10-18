@@ -1,0 +1,215 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.crypto.tls.TlsConnection;
+import dev.cajeta.unit.Assert;
+
+/**
+ * cajeta-crypto plan 4.1.1: the memory-BIO engine, ported from cajeta's
+ * TlsEngineTests, TlsConnectionTests and TlsClientTests. A client and a server
+ * TlsConnection complete a handshake purely by shuttling ciphertext between
+ * them, with no socket. The C++ tests drove the `__cajeta_tls_*` entry points
+ * directly; TlsConnection wraps each one, so these drive it instead and the
+ * two TlsConnectionTests cases become the round trip and trust-anchor cases
+ * here. Certificates come from TestCerts.
+ */
+public class TlsEngineTest {
+
+    public TlsEngineTest() { return; }
+
+    static int32 shuttle(TlsConnection src, TlsConnection dst, int8[] buf) {
+        int32 total = 0;
+        int32 n = src.pull(buf, 16384);
+        while (n > 0) {
+            dst.feed(buf, n);
+            total = total + n;
+            n = src.pull(buf, 16384);
+        }
+        return total;
+    }
+
+    /** Drives both handshakes to completion; false when either side fails or 64 rounds pass. */
+    static boolean pump(TlsConnection client, TlsConnection server) {
+        int8[] buf = heap int8[16384];
+        int32 round = 0;
+        while (round < 64) {
+            int32 cs = client.handshakeStep();
+            TlsEngineTest.shuttle(client, server, buf);
+            int32 ss = server.handshakeStep();
+            TlsEngineTest.shuttle(server, client, buf);
+            if (cs == TlsConnection.FAILED || ss == TlsConnection.FAILED) { return false; }
+            if (cs == TlsConnection.OK && ss == TlsConnection.OK) { return true; }
+            round = round + 1;
+        }
+        return false;
+    }
+
+    static #TlsConnection server(String cert, String key) {
+        int8[] c #= Bytes.ascii(cert);
+        int8[] k #= Bytes.ascii(key);
+        TlsConnection s #= TlsConnection.server(c, cert.byteLength(), k, key.byteLength());
+        return #s;
+    }
+
+    /** A verifying client for `host`, trusting `anchor` unless it is empty. */
+    static #TlsConnection verifying(String anchor, String host) {
+        TlsConnection c #= TlsConnection.verifyingClient();
+        if (anchor.byteLength() > 0) {
+            int8[] pem #= Bytes.ascii(anchor);
+            Assert.equals(0L, (int64) c.addTrust(pem, anchor.byteLength()));
+        }
+        int8[] h #= Bytes.ascii(host);
+        c.setVerifyHost(h, host.byteLength());
+        return #c;
+    }
+
+    /** The ALPN wire form of one protocol name: its length byte, then its bytes. */
+    static #int8[] alpn1(String p) {
+        int32 n = p.byteLength();
+        int8[] out = heap int8[n + 1];
+        out[0] = (int8) n;
+        int32 i = 0;
+        while (i < n) { out[i + 1] = p.byteAt(i); i = i + 1; }
+        return #out;
+    }
+
+    static #String text(int8[] b, int32 n) {
+        int8[] copy = heap int8[n < 1 ? 1 : n];
+        int32 i = 0;
+        while (i < n) { copy[i] = b[i]; i = i + 1; }
+        String s #= heap String(#copy, n);
+        return #s;
+    }
+
+    // TlsClientTests: a client context is created and freed through the engine binding.
+    @Test
+    public void clientContextCreatesAndFrees() {
+        TlsConnection c #= TlsConnection.client();
+        Assert.equals(0L, (int64) c.pending());
+    }
+
+    // A full handshake over the memory BIOs, then plaintext both ways.
+    @Test
+    public void memoryBioHandshakeAndPlaintextRoundTrip() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        TlsConnection client #= TlsConnection.client();
+        int8[] sni #= Bytes.ascii("localhost");
+        client.setSni(sni, 9);
+        Assert.isTrue(TlsEngineTest.pump(client, server));
+
+        int8[] buf = heap int8[16384];
+        String req = "GET / HTTP/1.1\r\n\r\n";
+        int8[] reqBytes #= Bytes.ascii(req);
+        Assert.equals((int64) req.byteLength(), (int64) client.write(reqBytes, req.byteLength()));
+        Assert.isTrue(TlsEngineTest.shuttle(client, server, buf) > 0);
+        int8[] got = heap int8[256];
+        int32 rn = server.read(got, 256);
+        Assert.equals((int64) req.byteLength(), (int64) rn);
+        String gotReq #= TlsEngineTest.text(got, rn);
+        Assert.equals(req, gotReq);
+
+        String resp = "HTTP/1.1 200 OK\r\n\r\nhi";
+        int8[] respBytes #= Bytes.ascii(resp);
+        Assert.equals((int64) resp.byteLength(), (int64) server.write(respBytes, resp.byteLength()));
+        Assert.isTrue(TlsEngineTest.shuttle(server, client, buf) > 0);
+        int8[] got2 = heap int8[256];
+        int32 rn2 = client.read(got2, 256);
+        Assert.equals((int64) resp.byteLength(), (int64) rn2);
+        String gotResp #= TlsEngineTest.text(got2, rn2);
+        Assert.equals(resp, gotResp);
+    }
+
+    // ALPN: the client offers h2 and http/1.1, the server supports http/1.1 only.
+    @Test
+    public void alpnServerSelectsOverlap() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        int8[] sp #= TlsEngineTest.alpn1("http/1.1");
+        server.setServerAlpn(sp, 9);
+        TlsConnection client #= TlsConnection.client();
+        int8[] h2 #= TlsEngineTest.alpn1("h2");
+        int8[] cp = heap int8[12];
+        int32 i = 0;
+        while (i < 3) { cp[i] = h2[i]; i = i + 1; }
+        while (i < 12) { cp[i] = sp[i - 3]; i = i + 1; }
+        client.setAlpn(cp, 12);
+        int8[] sni #= Bytes.ascii("localhost");
+        client.setSni(sni, 9);
+        Assert.isTrue(TlsEngineTest.pump(client, server));
+
+        int8[] cneg = heap int8[64];
+        int8[] sneg = heap int8[64];
+        int32 cn = client.negotiatedAlpn(cneg, 64);
+        int32 sn = server.negotiatedAlpn(sneg, 64);
+        String cs #= TlsEngineTest.text(cneg, cn);
+        String ss #= TlsEngineTest.text(sneg, sn);
+        Assert.equals("http/1.1", cs);
+        Assert.equals("http/1.1", ss);
+    }
+
+    // ALPN with no overlap: the handshake still succeeds and nothing is negotiated.
+    @Test
+    public void alpnNoOverlapNegotiatesNothing() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        int8[] sp #= TlsEngineTest.alpn1("http/1.1");
+        server.setServerAlpn(sp, 9);
+        TlsConnection client #= TlsConnection.client();
+        int8[] cp #= TlsEngineTest.alpn1("h2");
+        client.setAlpn(cp, 3);
+        int8[] sni #= Bytes.ascii("localhost");
+        client.setSni(sni, 9);
+        Assert.isTrue(TlsEngineTest.pump(client, server));
+        int8[] cneg = heap int8[64];
+        Assert.equals(0L, (int64) client.negotiatedAlpn(cneg, 64));
+    }
+
+    // An expired certificate fails even as the trust anchor with a matching name.
+    @Test
+    public void expiredCertRejected() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.EXPIRED_CERT, TestCerts.EXPIRED_KEY);
+        TlsConnection client #= TlsEngineTest.verifying(TestCerts.EXPIRED_CERT, "localhost");
+        Assert.isFalse(TlsEngineTest.pump(client, server));
+        Assert.equals((int64) TlsConnection.CERT_EXPIRED, (int64) client.verifyResult());
+    }
+
+    // A trusted, unexpired certificate for good.test fails a client expecting wrong.test.
+    @Test
+    public void hostnameMismatchRejected() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.GOOD_TEST_CERT, TestCerts.GOOD_TEST_KEY);
+        TlsConnection client #= TlsEngineTest.verifying(TestCerts.GOOD_TEST_CERT, "wrong.test");
+        Assert.isFalse(TlsEngineTest.pump(client, server));
+        Assert.equals((int64) TlsConnection.CERT_HOSTNAME, (int64) client.verifyResult());
+    }
+
+    // A self-signed certificate is untrusted until it is added as an anchor.
+    @Test
+    public void untrustedRootRejectedThenAcceptedWithAnchor() {
+        TlsConnection s1 #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        TlsConnection c1 #= TlsEngineTest.verifying("", "localhost");
+        Assert.isFalse(TlsEngineTest.pump(c1, s1));
+        Assert.equals((int64) TlsConnection.CERT_UNTRUSTED, (int64) c1.verifyResult());
+
+        TlsConnection s2 #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        TlsConnection c2 #= TlsEngineTest.verifying(TestCerts.LOCALHOST_CERT, "localhost");
+        Assert.isTrue(TlsEngineTest.pump(c2, s2));
+        Assert.equals((int64) TlsConnection.CERT_OK, (int64) c2.verifyResult());
+    }
+
+    // The operating system's trust store loads.
+    @Test
+    public void systemTrustLoadsWithoutError() {
+        TlsConnection c #= TlsConnection.verifyingClient();
+        Assert.equals(0L, (int64) c.useSystemTrust());
+    }
+
+    // The system store is used, not a pass: it still rejects a self-signed certificate.
+    @Test
+    public void systemTrustStillRejectsSelfSigned() {
+        TlsConnection server #= TlsEngineTest.server(TestCerts.LOCALHOST_CERT, TestCerts.LOCALHOST_KEY);
+        TlsConnection client #= TlsConnection.verifyingClient();
+        Assert.equals(0L, (int64) client.useSystemTrust());
+        int8[] h #= Bytes.ascii("localhost");
+        client.setVerifyHost(h, 9);
+        Assert.isFalse(TlsEngineTest.pump(client, server));
+        Assert.equals((int64) TlsConnection.CERT_UNTRUSTED, (int64) client.verifyResult());
+    }
+}

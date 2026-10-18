@@ -56,5 +56,5 @@ int8[] digest #= h.digest();              // 32 bytes
 ## See also
 
 - Tour: [HashDemo](../../../samples/tour/src/main/cajeta/tour/hash/HashDemo.cajeta)
-- Source: [`runtime/src/dev/cajeta/crypto/Blake3.cajeta`](../../../runtime/src/dev/cajeta/crypto/Blake3.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/Blake3.cajeta`](../src/main/cajeta/dev/cajeta/crypto/Blake3.cajeta)
 - [Sha256](Sha256.md) — the SHA-2 cryptographic digest, [XXHash3](XXHash3.md) — faster non-cryptographic fingerprints

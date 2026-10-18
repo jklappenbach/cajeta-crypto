@@ -26,5 +26,5 @@ String shown #= Totp.format(now, 6);                                    // "0070
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/Totp.cajeta`](../../../runtime/src/dev/cajeta/crypto/Totp.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/Totp.cajeta`](../src/main/cajeta/dev/cajeta/crypto/Totp.cajeta)
 - [HmacSha1](HmacSha1.md) — the MAC underneath, [Base32](../codec/Base32.md) — how the secret travels, [SecureRandom](SecureRandom.md) — where it comes from

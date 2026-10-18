@@ -37,5 +37,5 @@ h.reset();                                               // same key, fresh mess
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/HmacSha256.cajeta`](../../../runtime/src/dev/cajeta/crypto/HmacSha256.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/HmacSha256.cajeta`](../src/main/cajeta/dev/cajeta/crypto/HmacSha256.cajeta)
 - [Sha256](Sha256.md) — the digest underneath, [Pbkdf2](Pbkdf2.md) — password hashing built on this MAC, [Hash](Hash.md) — `constantTimeEquals` for checking a MAC

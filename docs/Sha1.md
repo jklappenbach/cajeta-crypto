@@ -53,5 +53,5 @@ int8[] digest #= h.digest();           // 20 bytes
 
 ## See also
 
-- Source: [`runtime/src/dev/cajeta/crypto/Sha1.cajeta`](../../../runtime/src/dev/cajeta/crypto/Sha1.cajeta)
+- Source: [`src/main/cajeta/dev/cajeta/crypto/Sha1.cajeta`](../src/main/cajeta/dev/cajeta/crypto/Sha1.cajeta)
 - [Sha256](Sha256.md) — the SHA-2 family member to use for actual cryptographic hashing

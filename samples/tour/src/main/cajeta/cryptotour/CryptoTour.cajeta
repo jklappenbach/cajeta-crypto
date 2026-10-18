@@ -175,6 +175,7 @@ public final class CryptoTour {
         CryptoTour.keyed();
         CryptoTour.oneTimePasswords();
         CryptoTour.signatures();
+        TlsTour.run();
         return CryptoTour.failures == 0 ? 0 : 1;
     }
 }

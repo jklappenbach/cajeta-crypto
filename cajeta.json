@@ -19,7 +19,7 @@
             "version": "0.43.1"
         },
 
-        "capabilities": [],
+        "capabilities": ["network"],
 
         "dependencies": {},
 
