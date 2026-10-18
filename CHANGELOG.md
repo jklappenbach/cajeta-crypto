@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-18)
 
 The first release. Cryptography leaves the cajeta stdlib for this library, so it ships on its own clock (cajeta spec `specs/cajeta-crypto-spec.md`). The algorithms are OpenSSL 3's, reached through `@Native` over the `cajeta_crypto` shim in `native/`. The `.cja` carries the shim's static archive for linux-x64, linux-arm64, macos-arm64 and windows-x64, so a consumer links offline. Requires cajeta 0.43.1 or later.
 

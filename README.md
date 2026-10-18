@@ -4,7 +4,7 @@
 
 ## Status
 
-0.1.0 is complete on `main` and waits on its release tag; [CHANGELOG.md](CHANGELOG.md) lists what it holds. The work follows the plan in the cajeta repo (`agents/cajeta-crypto-plan.md`, spec `specs/cajeta-crypto-spec.md`).
+0.1.0 is released; [CHANGELOG.md](CHANGELOG.md) lists what it holds. The work follows the plan in the cajeta repo (`agents/cajeta-crypto-plan.md`, spec `specs/cajeta-crypto-spec.md`).
 
 | Package | Contents | State |
 |---|---|---|
