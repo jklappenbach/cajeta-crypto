@@ -19,7 +19,8 @@ permissions:
   id-token: write
 
 env:
-  CAJETA_VERSION: v0.43.1
+  # Raised to v0.44.0, the first release without the stdlib crypto (plan Unit 8).
+  CAJETA_VERSION: v0.44.0
 
 jobs:
   native:
