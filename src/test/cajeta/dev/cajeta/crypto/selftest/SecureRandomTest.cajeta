@@ -102,6 +102,6 @@ public class SecureRandomTest {
 
     @Test
     public void versionMatchesTheManifest() {
-        Assert.isTrue(Crypto.version().equals("0.1.0"));
+        Assert.isTrue(Crypto.version().equals("0.1.1"));
     }
 }
