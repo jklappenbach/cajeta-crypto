@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-10-22)
+
+- The three skills ship. They sat under the package directory, which the packager never reads, and the release build ran the bare compiler without `--skill-root`, so 0.1.0 carried none. `crypto-digesters`, `crypto-Sha256` and `crypto-tls-overview` are now in the archive with an index naming `MD5`, `Sha1`, `Sha256` and `tls`, and CI fails a release whose archive lacks them. No code change.
+
 ## 0.1.0 (2026-10-18)
 
 The first release. Cryptography leaves the cajeta stdlib for this library, so it ships on its own clock (cajeta spec `specs/cajeta-crypto-spec.md`). The algorithms are OpenSSL 3's, reached through `@Native` over the `cajeta_crypto` shim in `native/`. The `.cja` carries the shim's static archive for linux-x64, linux-arm64, macos-arm64 and windows-x64, so a consumer links offline. Requires cajeta 0.43.1 or later.

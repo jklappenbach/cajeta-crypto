@@ -7,7 +7,7 @@
 
     "details": {
         "name":               "dev.cajeta.crypto",
-        "version":            "0.1.0",
+        "version":            "0.1.1",
         "description":        "cajeta-crypto — hashes, MACs, KDFs, TOTP, secure random, JWS signatures (RS256, ES256) and TLS over OpenSSL",
         "license":            "Apache-2.0",
         "authors":            ["Julian Klappenbach"],
