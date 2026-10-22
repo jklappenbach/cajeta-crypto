@@ -115,12 +115,26 @@ jobs:
           set -euo pipefail
           VERSION="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' cajeta.json | head -1)"
           out="$(mktemp -d)"
-          cajeta --emit=cja -o "$out/dev.cajeta.crypto-${VERSION}.cja" \
+          # --skill-root=. packs the project's skills/: the bare compiler looks
+          # under the source root otherwise, and 0.1.0 shipped with none.
+          cajeta --emit=cja --skill-root=. -o "$out/dev.cajeta.crypto-${VERSION}.cja" \
             dev.cajeta.crypto.Crypto.run src/main/cajeta "$out/lib"
           mkdir -p dist
           cp "$out/dev.cajeta.crypto-${VERSION}.cja" dist/
           echo "artifact=dist/dev.cajeta.crypto-${VERSION}.cja" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Verify the skills are packed
+        run: |
+          set -euo pipefail
+          cja="${{ steps.build.outputs.artifact }}"
+          if ls skills/*.md >/dev/null 2>&1; then
+            if cajeta archive list "$cja" | grep -q "skills/index.json"; then
+              echo "skills packed: $(ls skills/*.md | wc -l) source(s)"
+            else
+              echo "::error::skills/ has skills but the .cja carries no skills/index.json"; exit 1
+            fi
+          fi
+
       - name: Verify every platform is baked
         run: |
           set -euo pipefail
