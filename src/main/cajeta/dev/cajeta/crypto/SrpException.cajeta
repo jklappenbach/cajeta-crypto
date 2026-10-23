@@ -1,0 +1,12 @@
+package dev.cajeta.crypto;
+
+import cajeta.error.RecoverableException;
+import cajeta.lang.String;
+
+/** An SRP exchange that must be abandoned: a peer value of 0 mod N, a zero scrambler, or a failed computation. */
+public class SrpException extends RecoverableException {
+    public SrpException(String detail) {
+        this.message = "SRP: " + detail;
+        this.cause = 0;
+    }
+}

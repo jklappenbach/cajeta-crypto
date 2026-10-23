@@ -9,6 +9,7 @@
 | Package | Contents | State |
 |---|---|---|
 | `dev.cajeta.crypto` | `Sha1`, `Sha256`, `MD5`, `Blake3`, `HmacSha1`, `HmacSha256`, `Pbkdf2`, `Totp`, `SecureRandom`, moved from `cajeta.hash` with the same names and APIs | done |
+| `dev.cajeta.crypto` (0.2.0) | `Srp`, `SrpException`: SRP-6a, the client side of Amazon Cognito's `USER_SRP_AUTH` and the RFC 5054 group arithmetic | done |
 | `dev.cajeta.crypto.sig` | `Jwk`, `Signatures`, `EcKeyPair`, `JwsAlgorithm`, `InvalidKeyException`: RS256 and ES256 verification, ES256 signing, JWK keys | done |
 | `dev.cajeta.crypto.tls` | `TlsStream`, `TlsListener`, `TlsConnection`, `TlsException`, `CertificateInvalidException`, moved from `cajeta.io.net.tls`: TLS 1.2+ over the stdlib's sockets, verifying clients, server termination, ALPN | done |
 

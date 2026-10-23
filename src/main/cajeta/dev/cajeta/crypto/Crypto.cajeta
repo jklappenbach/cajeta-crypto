@@ -8,7 +8,7 @@ package dev.cajeta.crypto;
 public final class Crypto {
 
     /** The library version, which run-tests.sh holds equal to cajeta.json's. */
-    public static String version() { return "0.1.1"; }
+    public static String version() { return "0.2.0"; }
 
     /** The archive entry point `cajeta --emit=cja` builds against. */
     public static int32 run() {

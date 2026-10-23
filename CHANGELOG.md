@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- New `dev.cajeta.crypto.Srp`: SRP-6a, the password protocol behind Amazon Cognito's `USER_SRP_AUTH`. An `Srp` instance is the client side over Cognito's 3072-bit group (RFC 3526, g = 2, SHA-256): `publicHex()` is `SRP_A`, `passwordKey(poolName, userId, password, salt, srpB)` is the 16-byte HKDF-SHA256 key, and `Srp.claim(...)` is the `PASSWORD_CLAIM_SIGNATURE` before base64. The static `rfc5054K`, `rfc5054X`, `rfc5054U`, `modPowHex`, `clientPremasterHex`, `serverPublicHex` and `serverPremasterHex` give the protocol in RFC 5054's form. The arithmetic is OpenSSL's, in the new `native/cajeta_crypto_srp.c`, and every exponentiation by a secret is constant-time. A peer value of 0 mod N, or a zero scrambler, throws `SrpException`. Verified against RFC 5054 appendix B and against pycognito's `aws_srp` for Cognito's derivation.
+
 ## 0.1.1 (2026-10-22)
 
 - The three skills ship. They sat under the package directory, which the packager never reads, and the release build ran the bare compiler without `--skill-root`, so 0.1.0 carried none. `crypto-digesters`, `crypto-Sha256` and `crypto-tls-overview` are now in the archive with an index naming `MD5`, `Sha1`, `Sha256` and `tls`, and CI fails a release whose archive lacks them. No code change.

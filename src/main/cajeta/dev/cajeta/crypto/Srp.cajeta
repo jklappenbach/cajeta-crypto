@@ -1,0 +1,376 @@
+package dev.cajeta.crypto;
+
+import cajeta.lang.String;
+
+/**
+ * SRP-6a (RFC 2945, RFC 5054): password authentication in which the password
+ * never crosses the wire. The group arithmetic is OpenSSL's, in the
+ * cajeta_crypto shim (`native/cajeta_crypto_srp.c`); every exponentiation by
+ * a secret is constant-time there. Values cross this API as hexadecimal,
+ * which is how SRP's peers exchange them.
+ *
+ * An instance is one client side of Amazon Cognito's `USER_SRP_AUTH` flow,
+ * over the 3072-bit group of RFC 3526 with g = 2, SHA-256 and Cognito's own
+ * derivation:
+ *
+ * ```cajeta
+ * Srp srp #= Srp.random();
+ * String srpA #= srp.publicHex();                    // InitiateAuth's SRP_A
+ * // ... the PASSWORD_VERIFIER challenge returns SALT, SRP_B, SECRET_BLOCK
+ * int8[] key #= srp.passwordKey(poolName, userIdForSrp, password, salt, srpB);
+ * int8[] sig #= Srp.claim(key, poolName, userIdForSrp, block, blockLen, timestamp);
+ * // PASSWORD_CLAIM_SIGNATURE is base64(sig)
+ * ```
+ *
+ * `poolName` is the user pool id after its underscore (`us-east-1_AbC` is
+ * `AbC`). The static `rfc5054*`, `modPowHex`, `clientPremasterHex`,
+ * `serverPublicHex` and `serverPremasterHex` are the protocol's pieces in
+ * RFC 5054's form (SHA-1, values padded to the length of N), for other SRP
+ * peers and for a test double of the server side.
+ *
+ * Verified against RFC 5054 appendix B and against pycognito's aws_srp for
+ * Cognito's derivation, in `SrpTest`.
+ */
+public final class Srp {
+    // RFC 3526 group 15, the group Cognito fixes.
+    private static final String COGNITO_N =
+          "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74"
+        + "020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f1437"
+        + "4fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7ed"
+        + "ee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf05"
+        + "98da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb"
+        + "9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3b"
+        + "e39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf695581718"
+        + "3995497cea956ae515d2261898fa051015728e5a8aaac42dad33170d04507a33"
+        + "a85521abdf1cba64ecfb850458dbef0a8aea71575d060c7db3970f85a6e1e4c7"
+        + "abf5ae8cdb0933d71e8c94e04a25619dcee3d2261ad2ee6bf12ffa06d98a0864"
+        + "d87602733ec86a64521f2b18177b200cbbe117577a615d6c770988c0bad946e2"
+        + "08e24fa074e5ab3143db5bfce0fd108e4b82d120a93ad2caffffffffffffffff";
+
+    private int8[] secret;
+    private String publicValue;
+
+    /** A client with the private value `a` given in hex; tests use this. */
+    public Srp(String secretHex) {
+        this.secret #= Srp.fromHex(secretHex);
+        String a #= Srp.modPowHex("2", secretHex, Srp.COGNITO_N);
+        this.publicValue #= a;
+    }
+
+    /** A client with a fresh 128-byte private value from [[SecureRandom]]. */
+    public static #Srp random() {
+        int8[] a #= SecureRandom.bytes(128L);
+        String hex #= HmacSha256.toHex(a, 128L);
+        return heap Srp(hex);
+    }
+
+    /** RFC 3526's 3072-bit prime, lowercase hex. */
+    public static #String cognitoPrimeHex() {
+        return "" + Srp.COGNITO_N;
+    }
+
+    /** A = g^a mod N as minimal lowercase hex: InitiateAuth's SRP_A. */
+    public #String publicHex() {
+        return "" + this.publicValue;
+    }
+
+    /**
+     * The 16-byte key Cognito's PASSWORD_VERIFIER claim is signed with.
+     * Throws [[SrpException]] when B is 0 mod N or the scrambler u is zero.
+     */
+    public #int8[] passwordKey(String poolName, String userId, String password,
+                               String saltHex, String serverBHex) {
+        int8[] n #= Srp.fromHex(Srp.COGNITO_N);
+        int8[] a #= Srp.fromHex(this.publicValue);
+        int8[] b #= Srp.fromHex(serverBHex);
+
+        // u = H(pad(A) | pad(B))
+        Sha256 hu = heap Sha256();
+        Srp.updatePadded(hu, a);
+        Srp.updatePadded(hu, b);
+        int8[] u #= hu.digest();
+        if (Srp.isZero(u)) {
+            throw heap SrpException("the scrambler u is zero");
+        }
+
+        // x = H(padHex(salt) | H(poolName | userId | ":" | password))
+        String identity #= poolName + userId + ":" + password;
+        int8[] idBytes #= Srp.utf8(identity);
+        int8[] idHash #= Sha256.hash(idBytes, idBytes.count());
+        int8[] salt #= Srp.padHexString(saltHex);
+        Sha256 hx = heap Sha256();
+        hx.update(salt, salt.count());
+        hx.update(idHash, 32L);
+        int8[] x #= hx.digest();
+
+        // k = H(pad(N) | pad(g))
+        int8[] g = heap int8[1];
+        g[0] = (int8) 2;
+        Sha256 hk = heap Sha256();
+        Srp.updatePadded(hk, n);
+        Srp.updatePadded(hk, g);
+        int8[] k #= hk.digest();
+
+        int8[] s = heap int8[n.count()];
+        int32 rc = Srp.clientPremasterNative(n, n.count(), g, 1L, k, 32L, x, 32L,
+            this.secret, this.secret.count(), u, 32L, b, b.count(), s);
+        Srp.check(rc);
+
+        // HKDF-SHA256: PRK = HMAC(pad(u), pad(S)); OKM = HMAC(PRK, info | 0x01)[0..16)
+        int8[] uPad #= Srp.padded(u);
+        int8[] sPad #= Srp.padded(s);
+        int8[] prk #= HmacSha256.mac(uPad, uPad.count(), sPad, sPad.count());
+        String label = "Caldera Derived Key";
+        int32 ll = label.byteLength();
+        int8[] info = heap int8[ll + 1];
+        for (int32 i = 0; i < ll; i++) info[i] = label.byteAt(i);
+        info[ll] = (int8) 1;
+        int8[] okm #= HmacSha256.mac(prk, 32L, info, (int64) (ll + 1));
+        int8[] key = heap int8[16];
+        for (int32 j = 0; j < 16; j++) key[j] = okm[j];
+        return #key;
+    }
+
+    /**
+     * PASSWORD_CLAIM_SIGNATURE before base64: HMAC-SHA256 under the password
+     * key over poolName | userId | the decoded SECRET_BLOCK | timestamp.
+     */
+    public static #int8[] claim(int8[] key, String poolName, String userId,
+                                int8[] secretBlock, int64 secretBlockLen, String timestamp) {
+        HmacSha256 m = heap HmacSha256(key, key.count());
+        int8[] pool #= Srp.utf8(poolName);
+        int8[] user #= Srp.utf8(userId);
+        int8[] ts #= Srp.utf8(timestamp);
+        m.update(pool, pool.count());
+        m.update(user, user.count());
+        m.update(secretBlock, secretBlockLen);
+        m.update(ts, ts.count());
+        return m.digest();
+    }
+
+    // ── RFC 5054's form ──────────────────────────────────────────────
+
+    /** k = SHA1(N | PAD(g)). */
+    public static #String rfc5054K(String nHex, String gHex) {
+        int8[] n #= Srp.fromHex(nHex);
+        int8[] g #= Srp.leftPad(gHex, n.count());
+        Sha1 h = heap Sha1();
+        h.update(n, n.count());
+        h.update(g, g.count());
+        int8[] d #= h.digest();
+        return HmacSha256.toHex(d, 20L);
+    }
+
+    /** x = SHA1(s | SHA1(I | ":" | P)). */
+    public static #String rfc5054X(String saltHex, String user, String password) {
+        String ip #= user + ":" + password;
+        int8[] ipb #= Srp.utf8(ip);
+        int8[] inner #= Sha1.hash(ipb, ipb.count());
+        int8[] salt #= Srp.fromHex(saltHex);
+        Sha1 h = heap Sha1();
+        h.update(salt, salt.count());
+        h.update(inner, 20L);
+        int8[] d #= h.digest();
+        return HmacSha256.toHex(d, 20L);
+    }
+
+    /** u = SHA1(PAD(A) | PAD(B)). */
+    public static #String rfc5054U(String aHex, String bHex, String nHex) {
+        int8[] n #= Srp.fromHex(nHex);
+        int8[] a #= Srp.leftPad(aHex, n.count());
+        int8[] b #= Srp.leftPad(bHex, n.count());
+        Sha1 h = heap Sha1();
+        h.update(a, a.count());
+        h.update(b, b.count());
+        int8[] d #= h.digest();
+        return HmacSha256.toHex(d, 20L);
+    }
+
+    /** base^exp mod mod, minimal lowercase hex. The exponent is treated as secret. */
+    public static #String modPowHex(String baseHex, String expHex, String modHex) {
+        int8[] base #= Srp.fromHex(baseHex);
+        int8[] e #= Srp.fromHex(expHex);
+        int8[] m #= Srp.fromHex(modHex);
+        int8[] out = heap int8[m.count()];
+        Srp.check(Srp.modPowNative(base, base.count(), e, e.count(), m, m.count(), out));
+        return Srp.minimalHex(out);
+    }
+
+    /** The client's premaster (B - k*g^x)^(a + u*x) mod N; refuses B = 0 mod N. */
+    public static #String clientPremasterHex(String nHex, String gHex, String kHex, String xHex,
+                                             String aHex, String uHex, String bHex) {
+        int8[] n #= Srp.fromHex(nHex);
+        int8[] g #= Srp.fromHex(gHex);
+        int8[] k #= Srp.fromHex(kHex);
+        int8[] x #= Srp.fromHex(xHex);
+        int8[] a #= Srp.fromHex(aHex);
+        int8[] u #= Srp.fromHex(uHex);
+        int8[] b #= Srp.fromHex(bHex);
+        int8[] out = heap int8[n.count()];
+        Srp.check(Srp.clientPremasterNative(n, n.count(), g, g.count(), k, k.count(),
+            x, x.count(), a, a.count(), u, u.count(), b, b.count(), out));
+        return Srp.minimalHex(out);
+    }
+
+    /** The server's public value B = (k*v + g^b) mod N. */
+    public static #String serverPublicHex(String nHex, String gHex, String kHex,
+                                          String vHex, String bHex) {
+        int8[] n #= Srp.fromHex(nHex);
+        int8[] g #= Srp.fromHex(gHex);
+        int8[] k #= Srp.fromHex(kHex);
+        int8[] v #= Srp.fromHex(vHex);
+        int8[] b #= Srp.fromHex(bHex);
+        int8[] out = heap int8[n.count()];
+        Srp.check(Srp.serverPublicNative(n, n.count(), g, g.count(), k, k.count(),
+            v, v.count(), b, b.count(), out));
+        return Srp.minimalHex(out);
+    }
+
+    /** The server's premaster (A * v^u)^b mod N; refuses A = 0 mod N. */
+    public static #String serverPremasterHex(String nHex, String aHex, String vHex,
+                                             String uHex, String bHex) {
+        int8[] n #= Srp.fromHex(nHex);
+        int8[] a #= Srp.fromHex(aHex);
+        int8[] v #= Srp.fromHex(vHex);
+        int8[] u #= Srp.fromHex(uHex);
+        int8[] b #= Srp.fromHex(bHex);
+        int8[] out = heap int8[n.count()];
+        int32 rc = Srp.serverPremasterNative(n, n.count(), a, a.count(), v, v.count(),
+            u, u.count(), b, b.count(), out);
+        if (rc == 1) {
+            throw heap SrpException("the client's A is 0 mod N");
+        }
+        Srp.check(rc);
+        return Srp.minimalHex(out);
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────
+
+    private static void check(int32 rc) {
+        if (rc == 1) {
+            throw heap SrpException("the server's B is 0 mod N");
+        }
+        if (rc != 0) {
+            throw heap SrpException("the group arithmetic failed");
+        }
+    }
+
+    // Cognito's padHex on a number: the magnitude without leading zero
+    // bytes, with a 00 byte in front when its top bit is set; zero is 00.
+    private static #int8[] padded(int8[] v) {
+        int64 n = v.count();
+        int64 at = 0L;
+        while (at < n && v[at] == (int8) 0) at = at + 1L;
+        int64 len = n - at;
+        boolean high = len > 0L && (((int32) v[at]) & 0x80) != 0;
+        int64 outLen = len + (high || len == 0L ? 1L : 0L);
+        int8[] out = heap int8[outLen];
+        int64 o = outLen - len;
+        for (int64 i = 0L; i < len; i++) out[o + i] = v[at + i];
+        return #out;
+    }
+
+    private static void updatePadded(Sha256 h, int8[] v) {
+        int8[] p #= Srp.padded(v);
+        h.update(p, p.count());
+    }
+
+    // Cognito's padHex on a hex string: an odd length gains a leading 0, a
+    // first digit of 8 or above gains 00, and leading zeros are kept.
+    private static #int8[] padHexString(String hex) {
+        int32 n = hex.byteLength();
+        if (n % 2 == 1) {
+            String p #= "0" + hex;
+            return Srp.fromHex(p);
+        }
+        if (n > 0 && Srp.digit(hex.byteAt(0)) >= 8) {
+            String p #= "00" + hex;
+            return Srp.fromHex(p);
+        }
+        return Srp.fromHex(hex);
+    }
+
+    // The value of hex, left-padded with zero bytes to len.
+    private static #int8[] leftPad(String hex, int64 len) {
+        int8[] v #= Srp.fromHex(hex);
+        int64 n = v.count();
+        int8[] out = heap int8[len];
+        int64 o = len - n;
+        for (int64 i = 0L; i < n; i++) out[o + i] = v[i];
+        return #out;
+    }
+
+    // Big-endian bytes of a hex string; an odd length reads as a leading 0.
+    private static #int8[] fromHex(String hex) {
+        int32 n = hex.byteLength();
+        int32 odd = n % 2;
+        int32 len = (n + odd) / 2;
+        int8[] out = heap int8[len < 1 ? 1 : len];
+        int32 di = 0;
+        for (int32 i = 0; i < len; i++) {
+            int32 hi = 0;
+            if (i > 0 || odd == 0) {
+                hi = Srp.digit(hex.byteAt(di));
+                di = di + 1;
+            }
+            int32 lo = Srp.digit(hex.byteAt(di));
+            di = di + 1;
+            out[i] = (int8) ((hi << 4) | lo);
+        }
+        return #out;
+    }
+
+    private static int32 digit(int8 c) {
+        if (c >= (int8) 48 && c <= (int8) 57) return (int32) c - 48;
+        if (c >= (int8) 97 && c <= (int8) 102) return (int32) c - 87;
+        if (c >= (int8) 65 && c <= (int8) 70) return (int32) c - 55;
+        throw heap SrpException("not a hexadecimal digit");
+    }
+
+    // Lowercase hex without leading zeros; zero is "0".
+    private static #String minimalHex(int8[] v) {
+        String full #= HmacSha256.toHex(v, v.count());
+        int32 n = full.byteLength();
+        int32 at = 0;
+        while (at < n - 1 && full.byteAt(at) == (int8) 48) at = at + 1;
+        String trimmed #= full.substring(at, n);
+        return "" + trimmed;
+    }
+
+    private static boolean isZero(int8[] v) {
+        int64 n = v.count();
+        for (int64 i = 0L; i < n; i++) {
+            if (v[i] != (int8) 0) return false;
+        }
+        return true;
+    }
+
+    private static #int8[] utf8(String s) {
+        int32 n = s.byteLength();
+        int8[] out = heap int8[n < 1 ? 1 : n];
+        for (int32 i = 0; i < n; i++) out[i] = s.byteAt(i);
+        return #out;
+    }
+
+    // --- @Native bridges --------------------------------------------
+
+    @Native(symbol = "__cajeta_crypto_srp_modpow", lib = "cajeta_crypto")
+    private static int32 modPowNative(int8[] base, int64 baseLen, int8[] exp, int64 expLen,
+                                      int8[] mod, int64 modLen, int8[] out);
+
+    @Native(symbol = "__cajeta_crypto_srp_client_premaster", lib = "cajeta_crypto")
+    private static int32 clientPremasterNative(int8[] n, int64 nLen, int8[] g, int64 gLen,
+                                               int8[] k, int64 kLen, int8[] x, int64 xLen,
+                                               int8[] a, int64 aLen, int8[] u, int64 uLen,
+                                               int8[] b, int64 bLen, int8[] out);
+
+    @Native(symbol = "__cajeta_crypto_srp_server_public", lib = "cajeta_crypto")
+    private static int32 serverPublicNative(int8[] n, int64 nLen, int8[] g, int64 gLen,
+                                            int8[] k, int64 kLen, int8[] v, int64 vLen,
+                                            int8[] b, int64 bLen, int8[] out);
+
+    @Native(symbol = "__cajeta_crypto_srp_server_premaster", lib = "cajeta_crypto")
+    private static int32 serverPremasterNative(int8[] n, int64 nLen, int8[] a, int64 aLen,
+                                               int8[] v, int64 vLen, int8[] u, int64 uLen,
+                                               int8[] b, int64 bLen, int8[] out);
+}

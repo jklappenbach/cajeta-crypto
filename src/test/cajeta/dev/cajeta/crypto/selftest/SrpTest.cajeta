@@ -1,0 +1,231 @@
+package dev.cajeta.crypto.selftest;
+
+import cajeta.lang.String;
+import dev.cajeta.unit.Assert;
+import dev.cajeta.crypto.Srp;
+import dev.cajeta.crypto.SrpException;
+
+/**
+ * SRP-6a (plan 3.0.1). The group arithmetic is proven against RFC 5054
+ * appendix B, the 1024-bit group with SHA-1. Cognito's derivation (the
+ * 3072-bit group, SHA-256, its own padding, HKDF to the 16-byte password key,
+ * the HMAC claim) is proven against values computed by pycognito 2024.5.1's
+ * aws_srp.py, unmodified, for a fixed client secret, with a simulated server
+ * (verifier v = g^x, B = k*v + g^b) whose premaster agrees with the client's.
+ * Pool "us-east-1_ExAmPlE12", user id "4f3c2a10-9b7e-4d6a-8c21-0e5f7a9b3d14",
+ * password "Correct-Horse-Battery-9", timestamp "Thu Mar 5 07:04:09 UTC 2026";
+ * PASSWORD_CLAIM_SIGNATURE o+R38Tp+4DTWIVilhFGuKrvx2pZKbX9718BMcbguJGM=. A recorded exchange
+ * against a real pool is plan 3.1.5's.
+ */
+public class SrpTest {
+    private static final String N1024 =
+          "eeaf0ab9adb38dd69c33f80afa8fc5e86072618775ff3c0b9ea2314c9c256576"
+        + "d674df7496ea81d3383b4813d692c6e0e0d5d8e250b98be48e495c1d6089dad1"
+        + "5dc7d7b46154d6b6ce8ef4ad69b15d4982559b297bcf1885c529f566660e57ec"
+        + "68edbc3c05726cc02fd4cbf4976eaa9afd5138fe8376435b9fc61d2fc0eb06e3";
+    private static final String SALT1024 = "beb25379d1a8581eb5a727673a2441ee";
+    private static final String A_SECRET1024 = "60975527035cf2ad1989806f0407210bc81edc04e2762a56afd529ddda2d4393";
+    private static final String B_SECRET1024 = "e487cb59d31ac550471e81f00f6928e01dda08e974a004f49e61f5d105284d20";
+    private static final String RFC_K = "7556aa045aef2cdd07abaf0f665c3e818913186f";
+    private static final String RFC_X = "94b7555aabe9127cc58ccf4993db6cf84d16c124";
+    private static final String RFC_V =
+          "7e273de8696ffc4f4e337d05b4b375beb0dde1569e8fa00a9886d8129bada1f1"
+        + "822223ca1a605b530e379ba4729fdc59f105b4787e5186f5c671085a1447b52a"
+        + "48cf1970b4fb6f8400bbf4cebfbb168152e08ab5ea53d15c1aff87b2b9da6e04"
+        + "e058ad51cc72bfc9033b564e26480d78e955a5e29e7ab245db2be315e2099afb";
+    private static final String RFC_A =
+          "61d5e490f6f1b79547b0704c436f523dd0e560f0c64115bb72557ec44352e890"
+        + "3211c04692272d8b2d1a5358a2cf1b6e0bfcf99f921530ec8e39356179eae45e"
+        + "42ba92aeaced825171e1e8b9af6d9c03e1327f44be087ef06530e69f66615261"
+        + "eef54073ca11cf5858f0edfdfe15efeab349ef5d76988a3672fac47b0769447b";
+    private static final String RFC_B =
+          "bd0c61512c692c0cb6d041fa01bb152d4916a1e77af46ae105393011baf38964"
+        + "dc46a0670dd125b95a981652236f99d9b681cbf87837ec996c6da04453728610"
+        + "d0c6ddb58b318885d7d82c7f8deb75ce7bd4fbaa37089e6f9c6059f388838e7a"
+        + "00030b331eb76840910440b1b27aaeaeeb4012b7d7665238a8e3fb004b117b58";
+    private static final String RFC_U = "ce38b9593487da98554ed47d70a7ae5f462ef019";
+    private static final String RFC_S =
+          "b0dc82babcf30674ae450c0287745e7990a3381f63b387aaf271a10d233861e3"
+        + "59b48220f7c4693c9ae12b0a6f67809f0876e2d013800d6c41bb59b6d5979b5c"
+        + "00a172b4a2a5903a0bdcaf8a709585eb2afafa8f3499b200210dcc1f10eb3394"
+        + "3cd67fc88a2f39a4be5bec4ec0a3212dc346d7e474b29ede8a469ffeca686e5a";
+    private static final String COG_A_SECRET =
+          "13a173a88ef99fcc2aecda9e9a04d2c3b51cec2e9aebb42cb86880d7543dee16"
+        + "a934e54632d383ffa7c94079abd40f024b30832a6cdaa05e5b5f2479843e813b"
+        + "987f397478a280a2a20a422a0b9006204d595ae0a2e29068717185dae84dc24b"
+        + "fe12cd1d1449753fb6969560495da6260a7136bde1ecd0722ca9401db8acd085";
+    private static final String COG_B_SECRET =
+          "878485dd8790516301addc9db563b57166c33804b66be6605255b801c788b062"
+        + "c29be9aa6cb6c4f8da4b27433e899b09536a3026f64df168850f5f2db831006e"
+        + "aefc8233e49f138a3a69da6e417f22276f6cb30a83d8686b4c931a4ab59087fd"
+        + "b3d04c0cdb74f8a41b5461435df549e69443c3cff966f6ca370921f34da17715";
+    private static final String COG_K = "538282c4354742d7cbbde2359fcf67f9f5b3a6b08791e5011b43b8a5b66d9ee6";
+    private static final String COG_X = "4f6f8588515ac1b0391b886759370277a8edb83dd39fbfbb5fe61bc81d0c5ca2";
+    private static final String COG_V =
+          "a6087d2dc9f3870742a9b1691b4abcadcc4d1ee072511d092890831de7bc9bb1"
+        + "8af76326a4e75ff3120da1709e073f394ee56513890ceb811ca2e8789725c7d1"
+        + "d12a5473e8993036915a50572f045cd48224a21a870da5f61a3228a5d49e152f"
+        + "10ae4dcc489c27e66c39801940265d97f89014e26357ec3fea69e6044e644d27"
+        + "4f923d84c4b3da63c5fc614f20ba39563a9091f8e47fec81fc6d149835e7ab6d"
+        + "88f7c74c8de9026ce9d70b6aa6f8fd1499968a2fd9debe220fbb09d689f95d74"
+        + "4486fa7f2abfb32e2588b391a2f36076a9f9d9cb92569049f88437f9b8713c3c"
+        + "e9a1bcb88d48b97f5c23fa9f76a09bbd2b6f54e4a2a5a7760ca62f327477d427"
+        + "a363d979cbbb173fe67cec997f212cfd38d21f3ed93d36a8c6733eb96c897913"
+        + "ae0ca28e55f5fcedf92d1ab304bf2cc559a0f8cf2aa561d9d019c11f854eeca0"
+        + "2201f24ec1874829956986f6bbbb1dc78b236ee5e1010da153bd9fcd521b1cb9"
+        + "5658651d56676efb80cc622cde7d301dbd3862a03c3c3ad22d630b6a0ccff0e4";
+    private static final String COG_PUBLIC_A =
+          "61bf788e1b47ac7974df6917f27b08aa8f20e94826ebb9ac9cccb2f7ead146db"
+        + "2731bebe5f752d9e8125d5c7bd16867d79d4da50cf0a785c7cd7116f830aea3c"
+        + "6d6c94697e993ae5fd524639cc0630b749bc67d1960510aad3b3ff7e9724b1a4"
+        + "879b3b7894f985d26de21cd6841bd5c2e777c63e1640d22578ed557e3475454d"
+        + "575f02d9a5e5b92618fe7a111f5313306c09d886e8328a9b519016f4dc922c5a"
+        + "755c5a38b7c46bab164a84225ea27febde6044136cd99ea76a24c1b1302b5c2f"
+        + "0d1c83b4415ad3e1c2d3acbd02dada187293e6d9679debf08ba3725131adff9f"
+        + "5c5cffac04f459abe63de6031d59c29857196484216cf78cd07ca3aa550330fd"
+        + "db20d65c0fc4d4148c580b82a5674f876385c92bddc46462e542a5d966225dce"
+        + "93dae2e489f089739035bd37df6da811583ac853e3432e8bdb58e05eb883d411"
+        + "1df27c375291b156baac8f86bb9336df9d5d5666fcd0a052db6c079fcd5e7130"
+        + "cefc6d679de43858eb377b77e8918a1df8be63253ca25c26f3c75375d9e21e14";
+    private static final String COG_SERVER_B =
+          "4039f3f2cab205eedb267695a63b044ec19715464a0c4b846e58744b30c81299"
+        + "db831c35683ce7915fb4e3d12cce1f12d6c47d41e36f735368f8e4220689d896"
+        + "2728b7f38347ee5ae968b2de5dfc5139542060e167a4afd15d1ba29068fd20c5"
+        + "e56946665de67f0857c901ce71451f66511fae30eaea201594f61d25b827944e"
+        + "d0e7e277f6b94493f6122a54e515e33330d2dff616100ef3786655f5a72cf227"
+        + "b25e326c1a6722b8e1cfdc7d4e7d326c5284d9de24fcfaf6b412ee15cda8a101"
+        + "35f8498c064faa501fe82d3bad1ecbbb8c5c8c27bb52b114de32a679a54a571b"
+        + "45276cd9e8177331a6faca7340277762b3a48e2f53cfad376e3d8382cf3c3662"
+        + "cf397104dcd6ac9008f2d7d87bae8fe446f1827f105c67a64a1bfd58a72ff792"
+        + "d1ff31ac9b31969b6118cc5c61c55a0965b47c1edcbc82a5dcc99ca95f0028fa"
+        + "a691200444efc996a10962fad34eb858f6a041afafc2804b3b86440aa0a1212b"
+        + "70bf9faaafc757fd282cb2e4223e3bd80043a45b8679a559944ef6c2ba4fb2df";
+    private static final String COG_SALT = "c3f1a2b4d5e6f708192a3b4c5d6e7f80";
+    private static final String COG_HKDF = "d23924b128c99055c9f84d8b1fbcbd93";
+    private static final String COG_SECRET_BLOCK =
+          "833d7844a5be6e37ac07ae6a6a5cf0c5cb564d1e4f4f1948c88b50abc9918f76"
+        + "ded54dc84d3fab39943ecb63b96af58aa38014d537009242123188233e85c3b5"
+        + "e4647b13bbedc52c10e3655869f89f4df1f5339c5eab6c9671ef6d5699dc9e0d"
+        + "ac0409c1c2fc56a707d9fc72e976306f9ad8c4ba121056d6623ac5001f8ddcd1"
+        + "3253919a98e1bdc5047d8d29b541db66babf9b19d919ff34b7bd7bb803375109"
+        + "5b6f6c230bf347e0edb4b50f658e99657cda7386b0403a5be9470e55125d9ba5"
+        + "dc0cbb253fd2b44206f84ab498a6ffa3ba87b3e4608583feb91e3f209e025e56"
+        + "2fc87f8459150ac0f776e6fbfe2194c614ba79fb214e9fea5f6396b1d29be500";
+    private static final String COG_SIGNATURE = "a3e477f13a7ee034d62158a58451ae2abbf1da964a6d7f7bd7c04c71b82e2463";
+
+    public SrpTest() {
+        return;
+    }
+
+    @Test
+    public void rfc5054MultiplierScrambleAndPrivateKey() {
+        String k #= Srp.rfc5054K(SrpTest.N1024, "2");
+        Assert.equals(SrpTest.RFC_K, k);
+        String x #= Srp.rfc5054X(SrpTest.SALT1024, "alice", "password123");
+        Assert.equals(SrpTest.RFC_X, x);
+        String u #= Srp.rfc5054U(SrpTest.RFC_A, SrpTest.RFC_B, SrpTest.N1024);
+        Assert.equals(SrpTest.RFC_U, u);
+        return;
+    }
+
+    @Test
+    public void rfc5054VerifierAndPublicValues() {
+        String v #= Srp.modPowHex("2", SrpTest.RFC_X, SrpTest.N1024);
+        Assert.equals(SrpTest.RFC_V, v);
+        String a #= Srp.modPowHex("2", SrpTest.A_SECRET1024, SrpTest.N1024);
+        Assert.equals(SrpTest.RFC_A, a);
+        String b #= Srp.serverPublicHex(SrpTest.N1024, "2", SrpTest.RFC_K, SrpTest.RFC_V, SrpTest.B_SECRET1024);
+        Assert.equals(SrpTest.RFC_B, b);
+        return;
+    }
+
+    @Test
+    public void rfc5054PremasterAgreesOnBothSides() {
+        String client #= Srp.clientPremasterHex(SrpTest.N1024, "2", SrpTest.RFC_K, SrpTest.RFC_X,
+            SrpTest.A_SECRET1024, SrpTest.RFC_U, SrpTest.RFC_B);
+        Assert.equals(SrpTest.RFC_S, client);
+        String server #= Srp.serverPremasterHex(SrpTest.N1024, SrpTest.RFC_A, SrpTest.RFC_V,
+            SrpTest.RFC_U, SrpTest.B_SECRET1024);
+        Assert.equals(SrpTest.RFC_S, server);
+        return;
+    }
+
+    @Test
+    public void cognitoGroupIsRfc3526Prime3072() {
+        String n #= Srp.cognitoPrimeHex();
+        Assert.equals(768L, (int64) n.byteLength());
+        Assert.isTrue(n.indexOf("ffffffffffffffffc90fdaa22168c234") == 0L);
+        Assert.isTrue(n.indexOf("a93ad2caffffffffffffffff") == 744L);
+        return;
+    }
+
+    @Test
+    public void cognitoClientPublicValue() {
+        Srp srp = heap Srp(SrpTest.COG_A_SECRET);
+        String a #= srp.publicHex();
+        Assert.equals(SrpTest.COG_PUBLIC_A, a);
+        return;
+    }
+
+    @Test
+    public void cognitoServerSideMatchesTheReference() {
+        String n #= Srp.cognitoPrimeHex();
+        String v #= Srp.modPowHex("2", SrpTest.COG_X, n);
+        Assert.equals(SrpTest.COG_V, v);
+        String b #= Srp.serverPublicHex(n, "2", SrpTest.COG_K, SrpTest.COG_V, SrpTest.COG_B_SECRET);
+        Assert.equals(SrpTest.COG_SERVER_B, b);
+        return;
+    }
+
+    @Test
+    public void cognitoPasswordKey() {
+        Srp srp = heap Srp(SrpTest.COG_A_SECRET);
+        int8[] key #= srp.passwordKey("ExAmPlE12", "4f3c2a10-9b7e-4d6a-8c21-0e5f7a9b3d14",
+            "Correct-Horse-Battery-9", SrpTest.COG_SALT, SrpTest.COG_SERVER_B);
+        Assert.equals(16L, key.count());
+        Assert.isTrue(Bytes.equalsHex(key, 16, SrpTest.COG_HKDF));
+        return;
+    }
+
+    @Test
+    public void cognitoPasswordClaimSignature() {
+        int8[] key #= Bytes.hex(SrpTest.COG_HKDF);
+        int8[] block #= Bytes.hex(SrpTest.COG_SECRET_BLOCK);
+        int8[] sig #= Srp.claim(key, "ExAmPlE12", "4f3c2a10-9b7e-4d6a-8c21-0e5f7a9b3d14",
+            block, block.count(), "Thu Mar 5 07:04:09 UTC 2026");
+        Assert.equals(32L, sig.count());
+        Assert.isTrue(Bytes.equalsHex(sig, 32, SrpTest.COG_SIGNATURE));
+        return;
+    }
+
+    @Test
+    public void aServerValueOfZeroModNIsRefused() {
+        Srp srp = heap Srp(SrpTest.COG_A_SECRET);
+        String n #= Srp.cognitoPrimeHex();
+        Assert.isTrue(SrpTest.refused(srp, n));
+        Assert.isTrue(SrpTest.refused(srp, "0"));
+        Assert.isTrue(SrpTest.refused(srp, "00" + n));
+        return;
+    }
+
+    @Test
+    public void aRandomSecretIsFreshEachTime() {
+        Srp one #= Srp.random();
+        Srp two #= Srp.random();
+        String a1 #= one.publicHex();
+        String a2 #= two.publicHex();
+        Assert.isFalse(a1.equals(a2));
+        Assert.isTrue(a1.byteLength() > 700);
+        return;
+    }
+
+    // True when passwordKey refuses `b` as the server's value.
+    private static boolean refused(Srp srp, String b) {
+        try {
+            int8[] key #= srp.passwordKey("ExAmPlE12", "user", "pw", SrpTest.COG_SALT, b);
+        } catch (SrpException e) {
+            return e.message.indexOf("B") >= 0L;
+        }
+        return false;
+    }
+}
