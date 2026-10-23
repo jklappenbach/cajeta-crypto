@@ -12,6 +12,8 @@ import dev.cajeta.crypto.Pbkdf2;
 import dev.cajeta.crypto.SecureRandom;
 import dev.cajeta.crypto.Sha1;
 import dev.cajeta.crypto.Sha256;
+import dev.cajeta.crypto.Srp;
+import dev.cajeta.crypto.SrpException;
 import dev.cajeta.crypto.Totp;
 import dev.cajeta.crypto.sig.EcKeyPair;
 import dev.cajeta.crypto.sig.InvalidKeyException;
@@ -169,12 +171,44 @@ public final class CryptoTour {
         CryptoTour.check(refused, "a symmetric JWK is refused with InvalidKeyException");
     }
 
+    /**
+     * SRP-6a: both sides derive the same premaster from the password's
+     * verifier without the password crossing the wire. The instance API is
+     * Cognito's client side; a server value of 0 mod N is refused.
+     */
+    static void srp() {
+        System.stdout.println("SRP");
+        String n #= Srp.cognitoPrimeHex();
+        String k #= Srp.rfc5054K(n, "2");
+        String x #= Srp.rfc5054X("beb25379d1a8581eb5a727673a2441ee", "ada", "correct horse");
+        String v #= Srp.modPowHex("2", x, n);
+        String a = "60975527035cf2ad1989806f0407210bc81edc04e2762a56afd529ddda2d4393";
+        String b = "e487cb59d31ac550471e81f00f6928e01dda08e974a004f49e61f5d105284d20";
+        String pubA #= Srp.modPowHex("2", a, n);
+        String pubB #= Srp.serverPublicHex(n, "2", k, v, b);
+        String u #= Srp.rfc5054U(pubA, pubB, n);
+        String client #= Srp.clientPremasterHex(n, "2", k, x, a, u, pubB);
+        String server #= Srp.serverPremasterHex(n, pubA, v, u, b);
+        CryptoTour.check(client.equals(server), "client and server agree on the premaster");
+        Srp cognito #= Srp.random();
+        String srpA #= cognito.publicHex();
+        CryptoTour.check(srpA.byteLength() > 700, "a Cognito client's SRP_A is a 3072-bit value");
+        boolean refused = false;
+        try {
+            int8[] key #= cognito.passwordKey("AbC123", "user", "pw", "a1b2", "0");
+        } catch (SrpException e) {
+            refused = true;
+        }
+        CryptoTour.check(refused, "a server B of 0 mod N is refused with SrpException");
+    }
+
     public static int32 main() {
         System.stdout.println("dev.cajeta.crypto " + Crypto.version());
         CryptoTour.digests();
         CryptoTour.keyed();
         CryptoTour.oneTimePasswords();
         CryptoTour.signatures();
+        CryptoTour.srp();
         TlsTour.run();
         return CryptoTour.failures == 0 ? 0 : 1;
     }
